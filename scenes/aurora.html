@@ -1,0 +1,104 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Aurora</title>
+<script src="_ltw.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1020; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// ---------------- tweak me ----------------
+const CONFIG = {
+  speed: 0.12,
+  resolution: 0.5,                 // render scale; gradients look fine at half res and cost a quarter of the GPU
+  fps: 30,
+  grain: 0.035,
+  colors: ['#0b1020', '#14305a', '#1f8a7a', '#e0a85a', '#d97757'],   // base, deep, mid, highlight, hot
+};
+const SCHEMA = { groups: [
+  { label: 'Colors', fields: [ { key: 'colors', type: 'colors', label: 'Base → hot' }, { key: 'grain', type: 'range', label: 'Grain', min: 0, max: 0.15, step: 0.005 } ]},
+  { label: 'Motion', fields: [ { key: 'speed', type: 'range', label: 'Speed', min: 0, max: 0.6, step: 0.01 } ]},
+  { label: 'Performance', fields: [
+    { key: 'resolution', type: 'range', label: 'Render scale', min: 0.2, max: 1, step: 0.05 },
+    { key: 'fps', type: 'range', label: 'Frame rate', min: 5, max: 60, step: 1 },
+  ]},
+]};
+LTW.setup(CONFIG, SCHEMA, { change(k) { if (k === 'colors' || k === 'grain') setUniforms(); if (k === 'resolution') resize(); } });
+// ------------------------------------------
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl', { antialias: false, alpha: false, powerPreference: 'low-power' });
+
+const VS = `attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }`;
+const FS = `
+precision highp float;
+uniform vec2 R; uniform float T; uniform float G;
+uniform vec3 C0, C1, C2, C3, C4;
+float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float n(vec2 p){
+  vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+  return mix(mix(h(i), h(i+vec2(1,0)), f.x), mix(h(i+vec2(0,1)), h(i+vec2(1,1)), f.x), f.y);
+}
+float fbm(vec2 p){
+  float v = 0.0, a = 0.5; mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+  for (int i = 0; i < 5; i++) { v += a * n(p); p = m * p; a *= 0.5; }
+  return v;
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / R;
+  vec2 p = uv * vec2(R.x / R.y, 1.0);
+  float t = T;
+  vec2 q = vec2(fbm(p + t * 0.10), fbm(p + vec2(5.2, 1.3) - t * 0.07));
+  float f = fbm(p * 1.5 + 2.0 * q + vec2(t * 0.05, 0.0));
+  float band = smoothstep(0.2, 0.9, f) * (0.5 + 0.5 * sin(uv.y * 6.0 + q.x * 4.0 + t * 0.4));
+  vec3 col = mix(C0, C1, smoothstep(0.0, 0.5, f));
+  col = mix(col, C2, smoothstep(0.35, 0.75, f) * uv.y);
+  col = mix(col, C3, band * 0.6);
+  col = mix(col, C4, pow(max(0.0, f - 0.65) * 2.5, 2.0));
+  col *= 0.85 + 0.3 * (1.0 - length(uv - 0.5));
+  col += (h(gl_FragCoord.xy + T) - 0.5) * G;
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+function sh(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS));
+gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog); gl.useProgram(prog);
+const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+const U = (n) => gl.getUniformLocation(prog, n);
+const hex = (c) => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16) / 255);
+function setUniforms() {
+  const cols = CONFIG.colors;
+  ['C0', 'C1', 'C2', 'C3', 'C4'].forEach((n, i) => gl.uniform3fv(U(n), hex(cols[Math.min(i, cols.length - 1)] || '#000000')));
+  gl.uniform1f(U('G'), CONFIG.grain);
+}
+function resize() {
+  const s = Math.min(devicePixelRatio || 1, 2) * CONFIG.resolution;
+  canvas.width = Math.max(1, Math.floor(innerWidth * s));
+  canvas.height = Math.max(1, Math.floor(innerHeight * s));
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.uniform2f(U('R'), canvas.width, canvas.height);
+}
+setUniforms(); resize(); addEventListener('resize', resize);
+
+let last = 0, tAcc = 0, lastT = performance.now();
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (now - last < 1000 / CONFIG.fps) return; last = now;
+  tAcc += (now - lastT) / 1000 * CONFIG.speed; lastT = now;     // accumulate so speed changes don't jump
+  gl.uniform1f(U('T'), tAcc);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

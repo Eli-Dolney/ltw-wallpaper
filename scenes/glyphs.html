@@ -1,0 +1,205 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Glyphs</title>
+<script src="_ltw.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0c0a08; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// ---------------- tweak me ----------------
+const CONFIG = {
+  fontSize: 16,          // CSS px
+  cellW: 1.15,           // cell width  (x fontSize)
+  cellH: 1.45,           // cell height (x fontSize)
+  fps: 24,
+  speed: 0.09,           // how fast the glow field drifts
+  zoom: 0.055,           // blob size (smaller number = bigger blobs)
+  threshold: 0.44,       // how much of the screen stays dark (0..1)
+  flicker: 1.0,          // glyph swap rate multiplier
+  dimField: true,        // faint glyphs in the dark areas too
+  sweepEvery: 9,         // seconds between diagonal light sweeps
+  wordEvery: 2.5,        // seconds between words resolving out of the noise
+  words: ['LTW', 'WALLPAPER', 'ENGINE', 'CLAUDE', 'HELLO', 'MAKE', 'SHIP', 'LOCAL', 'GLYPH', 'SIGNAL'],
+  bg: '#0c0a08',
+  // dark -> bright (Claude terracotta)
+  palette: ['#24180f', '#3d2417', '#6a3a24', '#a0532f', '#d97757', '#f4a27a', '#ffd9c4'],
+  chars: '·:;+*=~-_|/\\<>^°•○●◦◇◆□■░▒▓█╌┄─│┼✦✧⟡∴∵≋≈∞ΔΣΩλπφψABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+  font: 'ui-monospace, "SF Mono", Menlo, monospace',
+};
+const SCHEMA = { groups: [
+  { label: 'Colors', fields: [
+    { key: 'bg', type: 'color', label: 'Background' },
+    { key: 'palette', type: 'colors', label: 'Palette (dark → bright)', rebuild: true },
+  ]},
+  { label: 'Glyphs', fields: [
+    { key: 'fontSize', type: 'range', label: 'Font size', min: 8, max: 40, step: 1, rebuild: true },
+    { key: 'cellW', type: 'range', label: 'Cell width', min: 0.8, max: 2, step: 0.05, rebuild: true },
+    { key: 'cellH', type: 'range', label: 'Cell height', min: 0.8, max: 2.5, step: 0.05, rebuild: true },
+    { key: 'dimField', type: 'toggle', label: 'Faint glyphs in dark areas' },
+    { key: 'chars', type: 'text', label: 'Character set', rebuild: true },
+    { key: 'words', type: 'list', label: 'Words that resolve' },
+  ]},
+  { label: 'Motion', fields: [
+    { key: 'speed', type: 'range', label: 'Drift speed', min: 0, max: 0.5, step: 0.005 },
+    { key: 'zoom', type: 'range', label: 'Blob size (smaller = bigger)', min: 0.01, max: 0.2, step: 0.005 },
+    { key: 'threshold', type: 'range', label: 'Darkness', min: 0.2, max: 0.7, step: 0.01 },
+    { key: 'flicker', type: 'range', label: 'Flicker', min: 0.1, max: 4, step: 0.1 },
+    { key: 'sweepEvery', type: 'range', label: 'Sweep every (s)', min: 2, max: 60, step: 1 },
+    { key: 'wordEvery', type: 'range', label: 'Word every (s)', min: 0.5, max: 30, step: 0.5 },
+  ]},
+  { label: 'Performance', fields: [ { key: 'fps', type: 'range', label: 'Frame rate', min: 5, max: 60, step: 1 } ]},
+]};
+LTW.setup(CONFIG, SCHEMA, { rebuild: () => build(), change(k) { if (k === 'bg') needClear = true; } });
+// ------------------------------------------
+
+// Smooth 3D value noise (x, y, time)
+const PERM = new Uint8Array(512);
+{
+  const p = [...Array(256).keys()];
+  let s = 1337;
+  const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  for (let i = 255; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
+  for (let i = 0; i < 512; i++) PERM[i] = p[i & 255];
+}
+const hash = (x, y, z) => PERM[(x + PERM[(y + PERM[z & 255]) & 255]) & 255] / 255;
+const lerp = (a, b, t) => a + (b - a) * t;
+const fade = (t) => t * t * (3 - 2 * t);
+function noise3(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const xf = fade(x - xi), yf = fade(y - yi), zf = fade(z - zi);
+  const X = xi & 255, Y = yi & 255, Z = zi & 255;
+  const c000 = hash(X, Y, Z),     c100 = hash(X + 1, Y, Z),     c010 = hash(X, Y + 1, Z),     c110 = hash(X + 1, Y + 1, Z);
+  const c001 = hash(X, Y, Z + 1), c101 = hash(X + 1, Y, Z + 1), c011 = hash(X, Y + 1, Z + 1), c111 = hash(X + 1, Y + 1, Z + 1);
+  return lerp(
+    lerp(lerp(c000, c100, xf), lerp(c010, c110, xf), yf),
+    lerp(lerp(c001, c101, xf), lerp(c011, c111, xf), yf), zf);
+}
+const fbm = (x, y, z) =>
+  noise3(x, y, z) * 0.6 + noise3(x * 2.1 + 7, y * 2.1 + 3, z * 1.7) * 0.3 + noise3(x * 4.3 + 11, y * 4.3 + 5, z * 2.3) * 0.1;
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { alpha: false });
+let dpr, W, H, cols, rows, cw, ch, cells, atlas, glyphs, L, aspect;
+
+function build() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width = Math.floor(innerWidth * dpr);
+  H = canvas.height = Math.floor(innerHeight * dpr);
+  cw = Math.round(CONFIG.fontSize * CONFIG.cellW * dpr);
+  ch = Math.round(CONFIG.fontSize * CONFIG.cellH * dpr);
+  cols = Math.ceil(W / cw) + 1;
+  rows = Math.ceil(H / ch) + 1;
+  glyphs = [...CONFIG.chars];
+  L = CONFIG.palette.length - 1;
+  aspect = CONFIG.cellH / CONFIG.cellW;
+
+  // Pre-render every glyph at every palette level once; frames are just drawImage calls.
+  atlas = document.createElement('canvas');
+  atlas.width = cw * glyphs.length;
+  atlas.height = ch * CONFIG.palette.length;
+  const a = atlas.getContext('2d');
+  a.font = `${CONFIG.fontSize * dpr}px ${CONFIG.font}`;
+  a.textAlign = 'center';
+  a.textBaseline = 'middle';
+  CONFIG.palette.forEach((col, li) => {
+    a.fillStyle = col;
+    glyphs.forEach((g, gi) => a.fillText(g, gi * cw + cw / 2, li * ch + ch / 2));
+  });
+
+  const now = performance.now();
+  cells = new Array(cols * rows);
+  for (let i = 0; i < cells.length; i++) {
+    cells[i] = { g: (Math.random() * glyphs.length) | 0, next: now + Math.random() * 1000, li: -1, dg: -1 };
+  }
+  needClear = true;
+}
+
+let overlays = [];
+let nextWord = 1.5, nextSweep = 3, sweepStart = -99;
+function spawnWord(t) {
+  const w = CONFIG.words[(Math.random() * CONFIG.words.length) | 0];
+  if (w.length + 2 > cols) return;
+  const r = 1 + ((Math.random() * (rows - 2)) | 0);
+  const c = 1 + ((Math.random() * (cols - w.length - 2)) | 0);
+  overlays.push({ r, c, w, t0: t, dur: 3.5 + Math.random() * 2.5 });
+}
+
+let last = 0;
+const t0 = performance.now();
+
+let needClear = true;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (now - last < 1000 / CONFIG.fps) return;
+  last = now;
+  const t = (now - t0) / 1000;
+
+  ctx.fillStyle = CONFIG.bg;
+  if (needClear) { ctx.fillRect(0, 0, W, H); for (const c of cells) c.li = -1; needClear = false; }
+
+  if (t > nextWord) { spawnWord(t); nextWord = t + CONFIG.wordEvery * (0.5 + Math.random()); }
+  if (t > nextSweep) { sweepStart = t; nextSweep = t + CONFIG.sweepEvery * (0.6 + Math.random() * 0.8); }
+  const sp = (t - sweepStart) / 2.8;        // 0..1 while a sweep is active
+  overlays = overlays.filter(o => t - o.t0 < o.dur);
+
+  // Cells are only repainted when their glyph or brightness level changes; most of the field is static per frame.
+  const z = t * CONFIG.speed;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cell = cells[r * cols + c];
+      const n = fbm(c * CONFIG.zoom / aspect, r * CONFIG.zoom, z);
+      let v = (n - CONFIG.threshold) / (1 - CONFIG.threshold);
+      if (sp >= 0 && sp < 1.3) {
+        const d = (c / cols + r / rows) / 2;
+        v += Math.exp(-Math.pow((d - sp + 0.15) * 14, 2)) * 0.7;
+      }
+      let li;
+      if (v <= 0) {
+        li = CONFIG.dimField ? 0 : -2;
+        if (now > cell.next) { cell.g = (Math.random() * glyphs.length) | 0; cell.next = now + 2000 + Math.random() * 5000; }
+      } else {
+        v = Math.pow(Math.min(1, v), 1.3);
+        if (now > cell.next) {
+          cell.g = (Math.random() * glyphs.length) | 0;
+          cell.next = now + (60 + Math.random() * 600) * (1.8 - v) / CONFIG.flicker;
+        }
+        li = Math.min(L, Math.max(1, Math.round(v * L)));
+      }
+      if (cell.li === li && cell.dg === cell.g) continue;
+      ctx.fillRect(c * cw, r * ch, cw, ch);
+      if (li >= 0) ctx.drawImage(atlas, cell.g * cw, li * ch, cw, ch, c * cw, r * ch, cw, ch);
+      cell.li = li; cell.dg = cell.g;
+    }
+  }
+
+  // Words resolve letter by letter out of the noise, then fade back in.
+  for (const o of overlays) {
+    const p = (t - o.t0) / o.dur;
+    const env = p < 0.2 ? p / 0.2 : p > 0.75 ? (1 - p) / 0.25 : 1;
+    const li = Math.round(env * L);
+    if (li <= 0) continue;
+    for (let k = 0; k < o.w.length; k++) {
+      const c = o.c + k;
+      if (c >= cols) break;
+      const resolved = p > 0.2 * (k + 1) / o.w.length;
+      let gi = resolved ? glyphs.indexOf(o.w[k]) : (Math.random() * glyphs.length) | 0;
+      if (gi < 0) gi = 0;
+      ctx.fillRect(c * cw, o.r * ch, cw, ch);
+      ctx.drawImage(atlas, gi * cw, li * ch, cw, ch, c * cw, o.r * ch, cw, ch);
+      cells[o.r * cols + c].li = -9;     // force a repaint once the word is gone
+    }
+  }
+}
+
+build();
+addEventListener('resize', build);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

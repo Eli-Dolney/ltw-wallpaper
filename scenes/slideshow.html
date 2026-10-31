@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Slideshow</title>
+<script src="_ltw.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  .slide { position: absolute; inset: 0; width: 100vw; height: 100vh; object-fit: cover;
+           opacity: 0; transition: opacity var(--fade) ease-in-out; }
+  .slide.on { opacity: 1; }
+  .kb { animation: kb var(--kb) linear forwards; }
+  @keyframes kb { from { transform: scale(1); } to { transform: scale(1.08); } }
+  .msg { color: #888; font: 15px -apple-system, sans-serif; position: absolute; left: 50%; top: 50%;
+         transform: translate(-50%, -50%); text-align: center; line-height: 1.6; }
+</style>
+</head>
+<body>
+<script>
+// ---------------- tweak me ----------------
+const CONFIG = { interval: 20, fade: 2, kenBurns: true, shuffle: true, fit: 'cover' };
+const SCHEMA = { groups: [ { label: 'Slideshow', fields: [
+  { key: 'interval', type: 'range', label: 'Seconds per picture', min: 3, max: 600, step: 1 },
+  { key: 'fade', type: 'range', label: 'Crossfade (s)', min: 0, max: 10, step: 0.5 },
+  { key: 'kenBurns', type: 'toggle', label: 'Slow zoom' },
+  { key: 'shuffle', type: 'toggle', label: 'Shuffle' },
+  { key: 'fit', type: 'select', label: 'Fit', options: ['cover', 'contain'] },
+]}]};
+LTW.setup(CONFIG, SCHEMA, { change(k) { applyVars(); if (k === 'interval' || k === 'shuffle') restart(); } });
+// Drop pictures in scenes/images/ and hit Reload in the menu.
+// ------------------------------------------
+const list = (window.LTW && window.LTW.images) || [];
+function applyVars() {
+  document.documentElement.style.setProperty('--fade', CONFIG.fade + 's');
+  document.documentElement.style.setProperty('--kb', (CONFIG.interval + CONFIG.fade) + 's');
+  document.querySelectorAll('.slide').forEach(s => s.style.objectFit = CONFIG.fit);
+}
+applyVars();
+let order = [], i = 0, cur = null, timer = null;
+function show() {
+  const img = new Image();
+  img.className = 'slide' + (CONFIG.kenBurns ? ' kb' : '');
+  img.style.objectFit = CONFIG.fit;
+  img.src = order[i % order.length]; i++;
+  img.onload = () => {
+    document.body.appendChild(img);
+    requestAnimationFrame(() => img.classList.add('on'));
+    if (cur) { const old = cur; old.classList.remove('on'); setTimeout(() => old.remove(), CONFIG.fade * 1000 + 100); }
+    cur = img;
+  };
+}
+function restart() {
+  clearInterval(timer);
+  order = CONFIG.shuffle ? list.slice().sort(() => Math.random() - 0.5) : list.slice();
+  if (!order.length) return;
+  timer = setInterval(show, CONFIG.interval * 1000);
+}
+if (!list.length) {
+  document.body.innerHTML = `<div class="msg">No images yet.<br>Put pictures in<br><code>${(window.LTW && window.LTW.scenesPath) || 'scenes'}/images/</code><br>then choose Reload from the menu bar.</div>`;
+} else {
+  restart(); show();
+}
+</script>
+</body>
+</html>

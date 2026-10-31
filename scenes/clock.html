@@ -1,0 +1,69 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Clock</title>
+<script src="_ltw.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg, #0c0a08); color: var(--fg, #f3e9e2);
+               font-family: -apple-system, "Helvetica Neue", sans-serif; }
+  #blob { position: absolute; inset: -20%; filter: blur(90px); opacity: var(--glow, 0.55);
+          background: radial-gradient(circle at 30% 40%, var(--c1, #d97757) 0, transparent 35%),
+                      radial-gradient(circle at 70% 65%, var(--c2, #3b5a9a) 0, transparent 40%);
+          animation: drift 40s ease-in-out infinite alternate; }
+  @keyframes drift { from { transform: translate(-4%, -3%) rotate(0deg); } to { transform: translate(4%, 3%) rotate(8deg); } }
+  #wrap { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  #time { font-size: calc(var(--size, 16) * 1vw); font-weight: var(--weight, 200); letter-spacing: -0.03em; line-height: 1;
+          font-variant-numeric: tabular-nums; }
+  #time small { font-size: 0.35em; font-weight: 300; opacity: 0.7; margin-left: 0.15em; }
+  #date { margin-top: 0.6em; font-size: clamp(16px, 2.2vw, 36px); font-weight: 300; letter-spacing: 0.22em;
+          text-transform: uppercase; opacity: 0.75; }
+  #note { position: absolute; bottom: 7vh; left: 50%; transform: translateX(-50%); white-space: nowrap;
+          font-size: 14px; letter-spacing: 0.3em; opacity: 0.35; text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div id="blob"></div>
+<div id="wrap"><div id="time"></div><div id="date"></div></div>
+<div id="note"></div>
+<script>
+// ---------------- tweak me ----------------
+const CONFIG = { hour24: false, seconds: false, note: 'make something today', size: 16, weight: 200,
+                 bg: '#0c0a08', fg: '#f3e9e2', glow1: '#d97757', glow2: '#3b5a9a', glowStrength: 0.55 };
+const SCHEMA = { groups: [
+  { label: 'Clock', fields: [
+    { key: 'hour24', type: 'toggle', label: '24-hour' }, { key: 'seconds', type: 'toggle', label: 'Show seconds' },
+    { key: 'size', type: 'range', label: 'Size', min: 6, max: 30, step: 0.5 },
+    { key: 'weight', type: 'select', label: 'Weight', options: ['100', '200', '300', '400', '600', '800'] },
+    { key: 'note', type: 'text', label: 'Bottom note' },
+  ]},
+  { label: 'Colors', fields: [
+    { key: 'bg', type: 'color', label: 'Background' }, { key: 'fg', type: 'color', label: 'Text' },
+    { key: 'glow1', type: 'color', label: 'Glow 1' }, { key: 'glow2', type: 'color', label: 'Glow 2' },
+    { key: 'glowStrength', type: 'range', label: 'Glow strength', min: 0, max: 1, step: 0.05 },
+  ]},
+]};
+LTW.setup(CONFIG, SCHEMA, { change(k) { applyLook(); if (k === 'seconds') restartTick(); tick(); } });
+// ------------------------------------------
+function applyLook() {
+  const r = document.documentElement.style;
+  r.setProperty('--bg', CONFIG.bg); r.setProperty('--fg', CONFIG.fg);
+  r.setProperty('--c1', CONFIG.glow1); r.setProperty('--c2', CONFIG.glow2); r.setProperty('--glow', CONFIG.glowStrength);
+  r.setProperty('--size', CONFIG.size); r.setProperty('--weight', CONFIG.weight);
+  document.getElementById('note').textContent = CONFIG.note;
+}
+function tick() {
+  const d = new Date();
+  let h = d.getHours(), ampm = '';
+  if (!CONFIG.hour24) { ampm = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; }
+  const mm = String(d.getMinutes()).padStart(2, '0'), ss = String(d.getSeconds()).padStart(2, '0');
+  document.getElementById('time').innerHTML =
+    (CONFIG.hour24 ? String(h).padStart(2, '0') : h) + ':' + mm + (CONFIG.seconds ? ':' + ss : '') + (ampm ? `<small>${ampm}</small>` : '');
+  document.getElementById('date').textContent = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+}
+let timer = null;
+function restartTick() { clearInterval(timer); timer = setInterval(tick, CONFIG.seconds ? 1000 : 5000); }
+applyLook(); tick(); restartTick();
+</script>
+</body>
+</html>

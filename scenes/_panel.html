@@ -1,0 +1,416 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Customize</title>
+<style>
+  :root { color-scheme: dark; --bg: #171717; --fg: #e8e4e0; --dim: #8d8780; --line: #2a2a2a; --ctl: #222; --ctl-line: #333; --ctl-hover: #555;
+          --tabs: #222; --tab-on: #333; --switch: #333; --label: #cfc9c3; --accent: #d97757; --pad-top: 36px; }
+  html[data-theme=light] { color-scheme: light; --bg: #f2f0ee; --fg: #1b1917; --dim: #7a736c; --line: #dcd8d3; --ctl: #ffffff; --ctl-line: #d3cec8; --ctl-hover: #a8a19a;
+          --tabs: #e4e0db; --tab-on: #ffffff; --switch: #c9c3bc; --label: #3a3632; }
+  html.translucent { --bg: transparent; --ctl: rgba(255,255,255,0.07); --ctl-line: rgba(255,255,255,0.14); --tabs: rgba(255,255,255,0.07); --tab-on: rgba(255,255,255,0.14); --line: rgba(255,255,255,0.09); --switch: rgba(255,255,255,0.18); }
+  html.translucent[data-theme=light] { --ctl: rgba(255,255,255,0.55); --ctl-line: rgba(0,0,0,0.12); --tabs: rgba(0,0,0,0.06); --tab-on: rgba(255,255,255,0.8); --line: rgba(0,0,0,0.08); --switch: rgba(0,0,0,0.18); }
+  html.nobuttons { --pad-top: 16px; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.4 -apple-system, "Helvetica Neue", sans-serif; }
+  body { padding: var(--pad-top) 16px 24px; -webkit-user-select: none; }
+  nav { display: flex; gap: 2px; background: var(--tabs); border-radius: 8px; padding: 2px; margin-bottom: 14px; -webkit-app-region: drag; }
+  nav button { flex: 1; background: transparent; border: 0; border-radius: 6px; padding: 5px 0; color: var(--dim); -webkit-app-region: no-drag; }
+  nav button.on { background: var(--tab-on); color: var(--fg); }
+  .bar { display: flex; gap: 8px; align-items: center; }
+  .bar select, .bar .title { flex: 1; }
+  .bar .title { font-weight: 600; }
+  button, select, input, textarea { font: inherit; color: var(--fg); background: var(--ctl); border: 1px solid var(--ctl-line); border-radius: 6px; }
+  button { padding: 5px 10px; cursor: pointer; }
+  button:hover { border-color: var(--ctl-hover); }
+  button.reset { color: var(--dim); }
+  select { padding: 5px 8px; max-width: 100%; }
+  h2 { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin: 18px 0 6px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .row.wide { grid-template-columns: 1fr; }
+  .row[hidden] { display: none; }
+  .label { display: flex; align-items: center; gap: 6px; color: var(--label); }
+  .label .revert { display: none; color: var(--accent); cursor: pointer; font-size: 14px; line-height: 1; }
+  .row.changed .label .revert { display: inline; }
+  .ctl { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
+  input[type=range] { flex: 1; min-width: 60px; accent-color: var(--accent); }
+  input[type=number] { width: 58px; padding: 3px 5px; text-align: right; }
+  input[type=text] { width: 100%; padding: 4px 6px; -webkit-user-select: text; }
+  input[type=color] { width: 30px; height: 24px; padding: 0 2px; border-radius: 5px; cursor: pointer; }
+  input.hex { width: 68px; padding: 3px 5px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; -webkit-user-select: text; }
+  textarea { width: 100%; box-sizing: border-box; padding: 6px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; resize: vertical; -webkit-user-select: text; }
+  textarea.bad { border-color: #c94b3c; }
+  .colors { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+  .colors .c { display: flex; align-items: center; gap: 2px; }
+  .colors .x { color: var(--dim); cursor: pointer; padding: 0 3px; }
+  .colors .x:hover { color: var(--fg); }
+  .switch { width: 36px; height: 20px; border-radius: 10px; background: var(--switch); position: relative; cursor: pointer; transition: background .15s; }
+  .switch.on { background: var(--accent); }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 8px; background: #fff; transition: left .15s; }
+  .switch.on::after { left: 18px; }
+  .file { display: flex; gap: 6px; width: 100%; }
+  .file input { flex: 1; min-width: 0; }
+  .empty { color: var(--dim); padding: 30px 0; text-align: center; }
+  .strip { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 10px; margin: 0 -2px 6px; scrollbar-width: none; }
+  .strip::-webkit-scrollbar { display: none; }
+  .card-s { flex: 0 0 auto; width: 96px; cursor: pointer; text-align: center; }
+  .card-s .th { width: 96px; height: 60px; border-radius: 8px; background: var(--switch); border: 2px solid transparent; overflow: hidden; display: flex; align-items: center; justify-content: center; color: var(--dim); font-size: 18px; }
+  .card-s .th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .card-s.on .th { border-color: var(--accent); }
+  .card-s .n { font-size: 11px; color: var(--dim); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card-s.on .n { color: var(--fg); }
+  .row.note { color: var(--dim); font-size: 12px; }
+  .warn { background: rgba(217,119,87,0.15); border: 1px solid var(--accent); border-radius: 6px; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; display: flex; gap: 8px; align-items: center; }
+  .warn span { flex: 1; }
+  .approw { display: flex; align-items: center; gap: 8px; }
+  .approw img { width: 22px; height: 22px; border-radius: 5px; }
+  .approw .noicon { width: 22px; height: 22px; border-radius: 5px; background: var(--switch); display: inline-block; }
+  .approw .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .approw .pct { color: var(--dim); font-variant-numeric: tabular-nums; width: 44px; text-align: right; }
+  .approw .mute { padding: 1px 6px; font-size: 13px; }
+  .approw .mute.on { border-color: var(--accent); }
+  .row.app input[type=range] { width: 100%; margin-top: 6px; }
+  .row.boost .pct { color: var(--accent); }
+  .row.idle .approw { opacity: 0.6; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .card { background: var(--ctl); border: 1px solid var(--ctl-line); border-radius: 10px; padding: 10px; min-width: 0; }
+  .card .k { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); }
+  .card .v { font-size: 22px; font-weight: 600; margin: 4px 0 8px; font-variant-numeric: tabular-nums; }
+  .card .v.small { font-size: 13px; }
+  .spark { width: 100%; height: 36px; display: block; }
+  .meter { height: 6px; border-radius: 3px; background: var(--switch); overflow: hidden; }
+  .meter i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+  .hint { color: var(--dim); font-size: 11px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<nav><button data-tab="scene" class="on">Scene</button><button data-tab="app">App</button><button data-tab="dock">Dock</button><button data-tab="audio">Audio</button><button data-tab="stats">Stats</button></nav>
+
+<section id="tab-scene">
+  <div class="strip" id="strip"></div>
+  <div class="bar">
+    <select id="scene"></select>
+    <button class="reset" id="reset" title="Delete this scene's saved settings">Reset</button>
+  </div>
+  <div id="form"></div>
+  <div class="hint">Changes apply live and are saved per scene. Edit the scene file for anything not listed here.</div>
+</section>
+
+<section id="tab-app" hidden>
+  <div class="bar">
+    <span class="title">Ltw Wallpaper</span>
+    <button class="reset" id="appReset" title="Reset the app settings">Reset</button>
+  </div>
+  <div id="appForm"></div>
+  <div class="hint">The menu bar tint works by setting the system wallpaper to a snapshot of the scene or a color; macOS tints the menu bar from it. "Restore Original Wallpaper" is under Advanced in the menu.</div>
+</section>
+
+<section id="tab-dock" hidden>
+  <div class="bar">
+    <span class="title">macOS Dock</span>
+    <button class="reset" id="dockReset" title="Remove these Dock preferences (apps and spacers stay)">Reset</button>
+  </div>
+  <div id="dockForm"></div>
+  <div class="hint">These are the Dock's own preferences; the Dock restarts about a second after a change (it blinks once). Spacers are removed by dragging them out of the Dock. macOS does not offer a way to hide the Dock's background tray.</div>
+</section>
+
+<section id="tab-audio" hidden>
+  <div class="bar"><span class="title">Volume mixer</span><button class="reset" id="mixerRefresh" title="Re-scan apps">Refresh</button></div>
+  <div id="mixer"></div>
+  <div class="hint">Apps appear while they play audio and stay listed while adjusted. An app is only touched once its slider leaves 100% (double-click a slider to return to 100%). Above 100% is a boost. The first adjustment asks for the “System Audio Recording” permission; nothing is recorded.</div>
+</section>
+
+<section id="tab-stats" hidden>
+  <div class="bar"><span class="title">System</span></div>
+  <div class="cards">
+    <div class="card"><div class="k">CPU</div><div class="v" id="st-cpu">—</div><canvas class="spark" id="sp-cpu"></canvas></div>
+    <div class="card"><div class="k">Memory</div><div class="v" id="st-mem">—</div><div class="meter"><i id="st-membar"></i></div></div>
+    <div class="card"><div class="k">Battery</div><div class="v" id="st-bat">—</div><div class="meter"><i id="st-batbar"></i></div></div>
+    <div class="card"><div class="k">Network</div><div class="v small" id="st-net">—</div><canvas class="spark" id="sp-net"></canvas></div>
+  </div>
+  <div class="hint" id="st-up"></div>
+</section>
+
+<script>
+const post = (m) => { try { window.webkit.messageHandlers.ltw.postMessage(m); } catch (e) { console.log('post', m); } };
+let S = null;
+let tab = 'scene';
+const timers = {};
+const getPath = (o, k) => k.split('.').reduce((a, p) => (a == null ? a : a[p]), o);
+const setPath = (o, k, v) => { const p = k.split('.'), last = p.pop(); let t = o; for (const q of p) { if (t[q] == null || typeof t[q] !== 'object') t[q] = {}; t = t[q]; } t[last] = v; };
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const hex6 = (c) => { if (typeof c !== 'string') return '#000000'; c = c.trim(); if (/^#[0-9a-f]{3}$/i.test(c)) return '#' + c[1] + c[1] + c[2] + c[2] + c[3] + c[3]; return /^#[0-9a-f]{6}$/i.test(c) ? c.toLowerCase() : '#000000'; };
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+// Two contexts share the field renderer: the current scene and the app itself.
+const CTX = {
+  scene: { type: 'set', get config() { return S.config; }, get defaults() { return S.defaults; }, rows: [] },
+  app:   { type: 'appset', get config() { return S.app.config; }, get defaults() { return S.app.defaults; }, rows: [] },
+  dock:  { type: 'dockset', get config() { return S.dock.config; }, get defaults() { return S.dock.defaults; }, rows: [] },
+};
+
+function set(c, key, value, rowEl) {
+  setPath(c.config, key, value);
+  const tk = c.type + ':' + key;
+  clearTimeout(timers[tk]);
+  timers[tk] = setTimeout(() => post({ type: c.type, key, value }), c.type === 'dockset' ? 250 : 50);
+  if (rowEl) rowEl.classList.toggle('changed', !same(value, getPath(c.defaults, key)));
+  updateVisibility(c);
+}
+
+function updateVisibility(c) {
+  for (const { f, row } of c.rows) {
+    const cond = f.showIf;
+    if (!cond) continue;
+    const v = getPath(c.config, cond.key);
+    let show = true;
+    if ('is' in cond) show = same(v, cond.is);
+    if ('not' in cond) show = !same(v, cond.not);
+    if (Array.isArray(cond.in)) show = cond.in.some((x) => same(x, v));
+    row.hidden = !show;
+  }
+}
+
+let firstLoad = true;
+window.__panelLoad = function (p) { S = p; if (p.look) __panelLook(p.look); if (firstLoad && p.tab) tab = p.tab; firstLoad = false; render(); };
+window.__panelThumb = function (name, url) {
+  const c = document.querySelector(`.card-s[data-name="${CSS.escape(name)}"] .th`);
+  if (c && url) c.innerHTML = `<img src="${url}">`;
+  if (S && S.sceneList) for (const s of S.sceneList) if (s.name === name) s.thumb = url;
+};
+
+// Window look from Customize → App → Customize window (also applied natively to the NSWindow).
+window.__panelLook = function (l) {
+  const h = document.documentElement;
+  h.dataset.theme = l.panelTheme === 'light' ? 'light' : 'dark';
+  h.classList.toggle('translucent', (l.panelStyle || 'translucent') === 'translucent');
+  h.classList.toggle('nobuttons', l.panelButtons === false);
+  if (l.panelAccent) h.style.setProperty('--accent', l.panelAccent);
+};
+
+function showTab(t) {
+  tab = t;
+  document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
+  document.querySelectorAll('section[id^=tab-]').forEach((s) => { s.hidden = s.id !== 'tab-' + t; });
+  post({ type: 'tab', name: t });
+  if (t === 'stats') drawStats();
+  if (t === 'audio') post({ type: 'mixer', action: 'refresh' });
+}
+window.__panelTab = showTab;
+
+function render() {
+  showTab(tab);
+  const sel = document.getElementById('scene');
+  sel.innerHTML = '';
+  for (const n of S.scenes || []) { const o = document.createElement('option'); o.value = n; o.textContent = n; o.selected = n === S.scene; sel.appendChild(o); }
+  const strip = document.getElementById('strip');
+  strip.innerHTML = '';
+  const glyph = { html: '✦', image: '🖼', video: '🎞' };
+  for (const s of S.sceneList || []) {
+    const c = document.createElement('div'); c.className = 'card-s' + (s.name === S.scene ? ' on' : ''); c.dataset.name = s.name; c.title = s.name;
+    c.innerHTML = `<div class="th">${s.thumb ? `<img src="${s.thumb}">` : (glyph[s.kind] || '✦')}</div><div class="n">${esc(s.name)}</div>`;
+    c.addEventListener('click', () => post({ type: 'scene', name: s.name }));
+    strip.appendChild(c);
+  }
+  const on = strip.querySelector('.card-s.on'); if (on) on.scrollIntoView({ inline: 'center', block: 'nearest' });
+  renderForm(CTX.scene, S.schema, document.getElementById('form'),
+    S.kind === 'html' ? 'This scene has no customizable settings yet.' : 'Images and videos have no settings.');
+  if (S.app) renderForm(CTX.app, S.app.schema, document.getElementById('appForm'), 'No app settings.');
+  if (S.dock) renderForm(CTX.dock, S.dock.schema, document.getElementById('dockForm'), 'No Dock settings.');
+  if (S.mixer) __mixerState(S.mixer);
+  if (S.stats) __stats(S.stats);
+}
+
+// ---- Audio mixer -------------------------------------------------------------------------
+let M = null, mixerPending = null, lastTouch = 0;
+window.__mixerState = function (st) {
+  if (Date.now() - lastTouch < 700) {   // don't re-render under a slider that is being dragged
+    mixerPending = st;
+    setTimeout(() => { if (mixerPending) { const p = mixerPending; mixerPending = null; __mixerState(p); } }, 750);
+    return;
+  }
+  M = st; renderMixer();
+};
+function renderMixer() {
+  const root = document.getElementById('mixer');
+  root.innerHTML = '';
+  if (!M) { root.innerHTML = '<div class="empty">Loading…</div>'; return; }
+  if (M.busy) { const b = document.createElement('div'); b.className = 'hint'; b.style.marginTop = '0'; b.textContent = 'Setting up… if macOS asks to allow “System Audio Recording”, click Allow.'; root.appendChild(b); }
+  if (M.error) {
+    const w = document.createElement('div'); w.className = 'warn';
+    w.innerHTML = `<span>${esc(M.error)}</span><button>Retry</button>`;
+    w.querySelector('button').addEventListener('click', () => post({ type: 'mixer', action: 'retry' }));
+    root.appendChild(w);
+  }
+  const h = document.createElement('h2'); h.textContent = 'Output'; root.appendChild(h);
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = '<div class="label"><span>Device</span></div><div class="ctl"><select></select></div>';
+  const sel = row.querySelector('select');
+  for (const o of M.outputs || []) { const op = document.createElement('option'); op.value = o.uid; op.textContent = o.name; op.selected = o.uid === M.output; sel.appendChild(op); }
+  sel.addEventListener('change', () => post({ type: 'mixer', action: 'output', uid: sel.value }));
+  root.appendChild(row);
+  root.appendChild(volRow({ key: null, name: 'Master volume', volume: M.master, muted: M.masterMuted, max: 1 }));
+  const h2 = document.createElement('h2'); h2.textContent = 'Apps'; root.appendChild(h2);
+  if (!(M.apps || []).length) { const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'No app is playing audio right now.'; root.appendChild(e); }
+  for (const a of M.apps || []) root.appendChild(volRow(a));
+}
+function volRow(a) {
+  const row = document.createElement('div'); row.className = 'row wide app' + (a.running === false ? ' idle' : '') + (a.volume > 1.001 ? ' boost' : '');
+  const max = a.max || 2;
+  row.innerHTML = `<div class="approw">${a.key == null ? '' : (a.icon ? `<img src="${a.icon}">` : '<span class="noicon"></span>')}<span class="name">${esc(a.name)}</span><span class="pct">${Math.round(a.volume * 100)}%</span><button class="mute ${a.muted ? 'on' : ''}" title="Mute">${a.muted ? '🔇' : '🔈'}</button></div><input type="range" min="0" max="${max}" step="0.01" value="${a.volume}">`;
+  const r = row.querySelector('input'), pctEl = row.querySelector('.pct');
+  const tk = 'mix:' + a.key;
+  const send = (v) => { lastTouch = Date.now(); clearTimeout(timers[tk]); timers[tk] = setTimeout(() => post(a.key == null ? { type: 'mixer', action: 'master', value: v } : { type: 'mixer', action: 'volume', key: a.key, value: v }), 60); };
+  r.addEventListener('input', () => { const v = parseFloat(r.value); pctEl.textContent = Math.round(v * 100) + '%'; row.classList.toggle('boost', v > 1.001); send(v); });
+  r.addEventListener('dblclick', () => { r.value = 1; pctEl.textContent = '100%'; row.classList.remove('boost'); send(1); });
+  row.querySelector('.mute').addEventListener('click', () => { lastTouch = 0; post(a.key == null ? { type: 'mixer', action: 'masterMute', on: !a.muted } : { type: 'mixer', action: 'mute', key: a.key, on: !a.muted }); });
+  return row;
+}
+document.getElementById('mixerRefresh').addEventListener('click', () => post({ type: 'mixer', action: 'refresh' }));
+
+// ---- System stats ------------------------------------------------------------------------
+const hist = { cpu: [], net: [] };
+let lastStats = null;
+const fmtBytes = (b, ps) => { const u = ['B', 'KB', 'MB', 'GB', 'TB']; let v = b, i = 0; while (v >= 1000 && i < u.length - 1) { v /= 1000; i++; } return (i === 0 ? v.toFixed(0) : (v < 10 ? v.toFixed(1) : v.toFixed(0))) + ' ' + u[i] + (ps ? '/s' : ''); };
+window.__stats = function (s) {
+  lastStats = s;
+  hist.cpu.push(s.cpu); hist.net.push(s.netIn + s.netOut);
+  if (hist.cpu.length > 60) hist.cpu.shift();
+  if (hist.net.length > 60) hist.net.shift();
+  if (tab === 'stats') drawStats();
+};
+function drawStats() {
+  const s = lastStats; if (!s) return;
+  document.getElementById('st-cpu').textContent = Math.round(s.cpu * 100) + '%';
+  document.getElementById('st-mem').textContent = fmtBytes(s.memUsed) + ' / ' + fmtBytes(s.memTotal);
+  document.getElementById('st-membar').style.width = (s.memTotal ? s.memUsed / s.memTotal * 100 : 0) + '%';
+  document.getElementById('st-bat').textContent = s.battery == null ? 'No battery' : Math.round(s.battery * 100) + '%' + (s.charging ? ' ⚡︎' : '');
+  document.getElementById('st-batbar').style.width = (s.battery == null ? 0 : s.battery * 100) + '%';
+  document.getElementById('st-net').textContent = '↓ ' + fmtBytes(s.netIn, true) + '   ↑ ' + fmtBytes(s.netOut, true);
+  const up = s.uptime || 0, d = Math.floor(up / 86400), hh = Math.floor(up % 86400 / 3600), mm = Math.floor(up % 3600 / 60);
+  document.getElementById('st-up').textContent = 'Uptime ' + (d ? d + 'd ' : '') + hh + 'h ' + mm + 'm · updates every 2 s';
+  spark('sp-cpu', hist.cpu, 1);
+  spark('sp-net', hist.net, Math.max(1, ...hist.net));
+}
+function spark(id, data, max) {
+  const c = document.getElementById(id), dpr = devicePixelRatio || 1;
+  const w = c.width = Math.max(1, c.clientWidth * dpr), h = c.height = Math.max(1, c.clientHeight * dpr);
+  const ctx = c.getContext('2d'); ctx.clearRect(0, 0, w, h);
+  if (data.length < 2) return;
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#d97757';
+  ctx.beginPath();
+  data.forEach((v, i) => { const x = w * i / 59, y = h - 1 - (v / max) * (h - 3); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.strokeStyle = accent; ctx.lineWidth = 1.5 * dpr; ctx.stroke();
+  const last = data.length - 1;
+  ctx.lineTo(w * last / 59, h); ctx.lineTo(0, h); ctx.closePath();
+  ctx.fillStyle = accent; ctx.globalAlpha = 0.15; ctx.fill(); ctx.globalAlpha = 1;
+}
+
+function renderForm(c, schema, form, emptyText) {
+  form.innerHTML = '';
+  c.rows = [];
+  if (!schema || !schema.groups) { form.innerHTML = `<div class="empty">${emptyText}</div>`; return; }
+  for (const g of schema.groups) {
+    const h = document.createElement('h2'); h.textContent = g.label || ''; form.appendChild(h);
+    for (const f of g.fields || []) { const row = field(c, f); c.rows.push({ f, row }); form.appendChild(row); }
+  }
+  updateVisibility(c);
+}
+
+function field(c, f) {
+  const row = document.createElement('div'); row.className = 'row';
+  const cur = getPath(c.config, f.key), def = getPath(c.defaults, f.key);
+  row.classList.toggle('changed', !same(cur, def));
+  const label = document.createElement('div'); label.className = 'label';
+  label.innerHTML = `<span>${esc(f.label || f.key)}</span><span class="revert" title="Reset to default">↺</span>`;
+  const ctl = document.createElement('div'); ctl.className = 'ctl';
+  row.appendChild(label); row.appendChild(ctl);
+  let build;   // (value) => fills ctl
+  const apply = (v) => { set(c, f.key, v, row); };
+
+  switch (f.type) {
+    case 'color': build = (v) => {
+      ctl.innerHTML = `<input class="hex" value="${hex6(v)}"><input type="color" value="${hex6(v)}">`;
+      const [hex, col] = ctl.querySelectorAll('input');
+      col.addEventListener('input', () => { hex.value = col.value; apply(col.value); });
+      hex.addEventListener('change', () => { if (/^#[0-9a-f]{6}$/i.test(hex.value)) { col.value = hex.value.toLowerCase(); apply(col.value); } });
+    }; break;
+    case 'colors': build = (v) => {
+      const list = Array.isArray(v) ? v.slice() : [];
+      ctl.innerHTML = ''; ctl.classList.add('colors');
+      list.forEach((col, i) => {
+        const w = document.createElement('span'); w.className = 'c';
+        w.innerHTML = `<input type="color" value="${hex6(col)}"><span class="x" title="Remove">×</span>`;
+        w.querySelector('input').addEventListener('input', (e) => { list[i] = e.target.value; apply(list.slice()); });
+        w.querySelector('.x').addEventListener('click', () => { list.splice(i, 1); apply(list.slice()); build(list); });
+        ctl.appendChild(w);
+      });
+      const add = document.createElement('button'); add.textContent = '+'; add.title = 'Add color';
+      add.addEventListener('click', () => { list.push(list[list.length - 1] || '#ffffff'); apply(list.slice()); build(list); });
+      ctl.appendChild(add);
+    }; break;
+    case 'range': build = (v) => {
+      ctl.innerHTML = `<input type="range" min="${f.min ?? 0}" max="${f.max ?? 1}" step="${f.step ?? 0.01}" value="${v}"><input type="number" min="${f.min ?? ''}" max="${f.max ?? ''}" step="${f.step ?? 'any'}" value="${v}">`;
+      const [r, n] = ctl.querySelectorAll('input');
+      r.addEventListener('input', () => { n.value = r.value; apply(parseFloat(r.value)); });
+      n.addEventListener('change', () => { const x = parseFloat(n.value); if (!isNaN(x)) { r.value = x; apply(x); } });
+    }; break;
+    case 'toggle': build = (v) => {
+      ctl.innerHTML = `<div class="switch ${v ? 'on' : ''}"></div>`;
+      const sw = ctl.firstChild;
+      sw.addEventListener('click', () => { const on = !sw.classList.contains('on'); sw.classList.toggle('on', on); apply(on); });
+    }; break;
+    case 'select': build = (v) => {
+      ctl.innerHTML = '<select></select>';
+      const s = ctl.firstChild;
+      for (const o of f.options || []) {
+        const val = (o && typeof o === 'object') ? o.value : o, lab = (o && typeof o === 'object') ? (o.label ?? o.value) : o;
+        const op = document.createElement('option'); op.value = val; op.textContent = lab; op.selected = val === v; s.appendChild(op);
+      }
+      s.addEventListener('change', () => apply(s.value));
+    }; break;
+    case 'note': row.classList.add('wide', 'note'); build = () => { ctl.remove(); label.querySelector('.revert').remove(); }; break;
+    case 'action': build = () => {
+      ctl.innerHTML = `<button>${esc(f.button || 'Go')}</button>`;
+      ctl.firstChild.addEventListener('click', () => post({ type: 'action', ctx: c.type, name: f.key }));
+      label.querySelector('.revert').remove();
+    }; break;
+    case 'file': row.classList.add('wide'); build = (v) => {
+      ctl.innerHTML = `<div class="file"><input type="text" placeholder="${esc(f.placeholder || '')}"><button title="Choose a file">…</button><button title="Clear">×</button></div>`;
+      const [t] = ctl.querySelectorAll('input'); const [pick, clear] = ctl.querySelectorAll('button');
+      t.value = v == null ? '' : String(v);
+      t.addEventListener('change', () => apply(t.value.trim()));
+      pick.addEventListener('click', () => post({ type: 'pickfile', key: f.key, ctx: c.type }));
+      clear.addEventListener('click', () => { t.value = ''; apply(''); });
+    }; break;
+    case 'list': row.classList.add('wide'); build = (v) => {
+      ctl.innerHTML = `<textarea rows="${f.rows || 4}" placeholder="one per line"></textarea>`;
+      const t = ctl.firstChild; t.value = Array.isArray(v) ? v.join('\n') : (v || '');
+      t.addEventListener('input', () => apply(t.value.split('\n').map(s => s.trim()).filter(Boolean)));
+    }; break;
+    case 'json': row.classList.add('wide'); build = (v) => {
+      ctl.innerHTML = `<textarea rows="${f.rows || 8}"></textarea>`;
+      const t = ctl.firstChild; t.value = JSON.stringify(v, null, 2);
+      t.addEventListener('input', () => { try { const x = JSON.parse(t.value); t.classList.remove('bad'); apply(x); } catch (e) { t.classList.add('bad'); } });
+    }; break;
+    default: row.classList.add('wide'); build = (v) => {
+      ctl.innerHTML = `<input type="text" placeholder="${esc(f.placeholder || '')}">`;
+      const t = ctl.firstChild; t.value = v == null ? '' : String(v);
+      t.addEventListener('input', () => apply(t.value));
+    };
+  }
+  build(cur);
+  if (f.type === 'action' || f.type === 'note') return row;
+  label.querySelector('.revert').addEventListener('click', () => { const d = JSON.parse(JSON.stringify(def === undefined ? null : def)); apply(d); build(d); });
+  return row;
+}
+
+document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') post({ type: 'close' }); });
+document.getElementById('scene').addEventListener('change', (e) => post({ type: 'scene', name: e.target.value }));
+document.getElementById('reset').addEventListener('click', () => { if (confirm('Reset this scene to its defaults?')) post({ type: 'reset' }); });
+document.getElementById('appReset').addEventListener('click', () => { if (confirm('Reset the app settings (icon, menu bar tint, battery saver)?')) post({ type: 'appreset' }); });
+document.getElementById('dockReset').addEventListener('click', () => { if (confirm('Remove these Dock preferences and restart the Dock? Apps and spacers stay.')) post({ type: 'dockreset' }); });
+post({ type: 'ready' });
+</script>
+</body>
+</html>

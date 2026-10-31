@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Matrix</title>
+<script src="_ltw.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// ---------------- tweak me ----------------
+const CONFIG = {
+  fontSize: 16,
+  fps: 20,
+  trail: 0.08,          // higher = shorter tails
+  head: '#d8ffe0',
+  body: '#2fd36a',
+  bg: '#000000',
+  chars: 'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ<>*+=-',
+};
+const SCHEMA = { groups: [
+  { label: 'Colors', fields: [
+    { key: 'head', type: 'color', label: 'Head' }, { key: 'body', type: 'color', label: 'Trail' }, { key: 'bg', type: 'color', label: 'Background', rebuild: true },
+  ]},
+  { label: 'Rain', fields: [
+    { key: 'fontSize', type: 'range', label: 'Font size', min: 8, max: 40, step: 1, rebuild: true },
+    { key: 'trail', type: 'range', label: 'Tail fade', min: 0.02, max: 0.4, step: 0.01 },
+    { key: 'chars', type: 'text', label: 'Character set', rebuild: true },
+  ]},
+  { label: 'Performance', fields: [ { key: 'fps', type: 'range', label: 'Frame rate', min: 5, max: 60, step: 1 } ]},
+]};
+LTW.setup(CONFIG, SCHEMA, { rebuild: () => build() });
+// ------------------------------------------
+const canvas = document.getElementById('c'); const ctx = canvas.getContext('2d', { alpha: false });
+let dpr, W, H, cols, drops, fs, chars, bgRGB;
+const hex = (c) => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)).join(',');
+function build() {
+  dpr = Math.min(devicePixelRatio || 1, 2);
+  W = canvas.width = Math.floor(innerWidth * dpr); H = canvas.height = Math.floor(innerHeight * dpr);
+  fs = CONFIG.fontSize * dpr; cols = Math.ceil(W / fs);
+  chars = [...CONFIG.chars]; bgRGB = hex(CONFIG.bg);
+  drops = Array.from({ length: cols }, () => ({ y: Math.random() * -H / fs, s: 0.6 + Math.random() * 0.9 }));
+  ctx.fillStyle = CONFIG.bg; ctx.fillRect(0, 0, W, H);
+  ctx.font = `${fs}px ui-monospace, Menlo, monospace`; ctx.textBaseline = 'top';
+}
+let last = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (now - last < 1000 / CONFIG.fps) return; last = now;
+  ctx.fillStyle = `rgba(${bgRGB},${CONFIG.trail})`; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < cols; i++) {
+    const d = drops[i]; const x = i * fs, y = Math.floor(d.y) * fs;
+    ctx.fillStyle = CONFIG.body; ctx.fillText(chars[(Math.random() * chars.length) | 0], x, y - fs);
+    ctx.fillStyle = CONFIG.head; ctx.fillText(chars[(Math.random() * chars.length) | 0], x, y);
+    d.y += d.s;
+    if (y > H && Math.random() > 0.975) { d.y = 0; d.s = 0.6 + Math.random() * 0.9; }
+  }
+}
+build(); addEventListener('resize', build); requestAnimationFrame(frame);
+</script>
+</body>
+</html>

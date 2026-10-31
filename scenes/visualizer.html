@@ -1,0 +1,118 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Visualizer</title>
+<script src="_ltw.js"></script>
+<script src="_gl.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0a0f; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// ---------------- tweak me ----------------
+const CONFIG = {
+  mode: 'bars',               // bars | ring | wave
+  bg: '#0b0a0f', colors: ['#d97757', '#f6d58a', '#19e6ff'],
+  bars: 48, barWidth: 0.6, mirror: true, rounded: true, glow: 0.8, height: 0.45,
+  beatFlash: 0.35, trail: 0.4, position: 'bottom',   // bottom | center
+  fps: 30,
+};
+const SCHEMA = { audio: true, groups: [
+  { label: 'Style', fields: [
+    { key: 'mode', type: 'select', label: 'Mode', options: [{ value: 'bars', label: 'Bars' }, { value: 'ring', label: 'Ring' }, { value: 'wave', label: 'Wave' }] },
+    { key: 'bg', type: 'color', label: 'Background' },
+    { key: 'colors', type: 'colors', label: 'Low → high' },
+    { key: 'glow', type: 'range', label: 'Glow', min: 0, max: 2, step: 0.05 },
+    { key: 'trail', type: 'range', label: 'Afterglow', min: 0, max: 0.9, step: 0.05 },
+    { key: 'beatFlash', type: 'range', label: 'Beat flash', min: 0, max: 1, step: 0.05 },
+  ]},
+  { label: 'Bars', fields: [
+    { key: 'bars', type: 'range', label: 'Count', min: 8, max: 128, step: 4 },
+    { key: 'barWidth', type: 'range', label: 'Thickness', min: 0.2, max: 1, step: 0.05 },
+    { key: 'height', type: 'range', label: 'Height', min: 0.1, max: 1, step: 0.05 },
+    { key: 'mirror', type: 'toggle', label: 'Mirror', showIf: { key: 'mode', not: 'ring' } },
+    { key: 'rounded', type: 'toggle', label: 'Rounded', showIf: { key: 'mode', is: 'bars' } },
+    { key: 'position', type: 'select', label: 'Position', options: [{ value: 'bottom', label: 'Bottom' }, { value: 'center', label: 'Center' }], showIf: { key: 'mode', not: 'ring' } },
+  ]},
+  { label: 'Performance', fields: [ { key: 'fps', type: 'range', label: 'Frame rate', min: 5, max: 60, step: 1 } ]},
+]};
+LTW.setup(CONFIG, SCHEMA, {});
+// ------------------------------------------
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d', { alpha: false });
+let dpr, W, H;
+function resize() { dpr = Math.min(devicePixelRatio || 1, 2); W = canvas.width = innerWidth * dpr; H = canvas.height = innerHeight * dpr; ctx.fillStyle = CONFIG.bg; ctx.fillRect(0, 0, W, H); }
+resize(); addEventListener('resize', resize);
+const rgb = (c) => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
+function palette(k) {   // 0..1 → rgb across CONFIG.colors
+  const cs = CONFIG.colors.map(rgb); if (cs.length === 1) return cs[0];
+  const p = k * (cs.length - 1), i = Math.min(cs.length - 2, Math.floor(p)), f = p - i;
+  return [0, 1, 2].map(j => Math.round(cs[i][j] + (cs[i + 1][j] - cs[i][j]) * f));
+}
+// resample 16 bands into N bars with smooth interpolation, plus per-bar smoothing
+let vals = [], flash = 0;
+function bars(n) {
+  const b = LTW.audio.bands;
+  if (vals.length !== n) vals = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    const p = (i / Math.max(1, n - 1)) * 15, k = Math.floor(p), f = p - k;
+    const v = b[k] + ((b[Math.min(15, k + 1)] || b[k]) - b[k]) * f;
+    vals[i] += (v - vals[i]) * (v > vals[i] ? 0.55 : 0.2);
+  }
+  return vals;
+}
+LTWLoop(() => CONFIG.fps, (now) => {
+  LTW.audioTick(now);
+  const A = LTW.audio;
+  flash = Math.max(flash * 0.85, A.beat ? CONFIG.beatFlash : 0);
+  // fade the previous frame for an afterglow instead of clearing
+  const bg = rgb(CONFIG.bg);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = `rgba(${bg},${1 - CONFIG.trail})`; ctx.fillRect(0, 0, W, H);
+  if (flash > 0.01) { ctx.fillStyle = `rgba(${palette(0.2)},${flash * 0.25})`; ctx.fillRect(0, 0, W, H); }
+  const n = CONFIG.bars | 0, v = bars(n);
+  ctx.globalCompositeOperation = 'lighter';
+  const glowW = CONFIG.glow * 10 * dpr, glowA = Math.min(0.5, CONFIG.glow * 0.22);   // glow = wide faint copy in 'lighter' mode
+  if (CONFIG.mode === 'ring') {
+    const cx = W / 2, cy = H / 2, r0 = Math.min(W, H) * 0.18 * (1 + A.bass * 0.08), len = Math.min(W, H) * 0.28 * CONFIG.height;
+    ctx.lineCap = 'round'; ctx.lineWidth = Math.max(2, (2 * Math.PI * r0 / n) * CONFIG.barWidth);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 - Math.PI / 2, h = Math.max(2 * dpr, v[i] * len);
+      const c = palette(i / n);
+      ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); ctx.lineTo(cx + Math.cos(a) * (r0 + h), cy + Math.sin(a) * (r0 + h));
+      if (glowW > 0) { const lw = ctx.lineWidth; ctx.lineWidth = lw + glowW; ctx.strokeStyle = `rgba(${c},${glowA})`; ctx.stroke(); ctx.lineWidth = lw; }
+      ctx.strokeStyle = `rgb(${c})`; ctx.stroke();
+    }
+    ctx.lineWidth = 2 * dpr; ctx.strokeStyle = `rgba(${palette(0)},0.5)`;
+    ctx.beginPath(); ctx.arc(cx, cy, r0 * 0.92, 0, Math.PI * 2); ctx.stroke();
+  } else {
+    const baseY = CONFIG.position === 'center' ? H / 2 : H * 0.92, maxH = H * (CONFIG.position === 'center' ? 0.42 : 0.84) * CONFIG.height;
+    const slot = W / n, bw = slot * CONFIG.barWidth, mirror = CONFIG.mirror && CONFIG.position === 'center';
+    if (CONFIG.mode === 'wave') {
+      ctx.lineWidth = 3 * dpr; ctx.lineJoin = 'round';
+      const path = (sign) => { ctx.beginPath(); for (let i = 0; i < n; i++) { const x = slot * (i + 0.5), y = baseY - sign * v[i] * maxH; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } };
+      const grad = ctx.createLinearGradient(0, 0, W, 0); CONFIG.colors.forEach((c, i) => grad.addColorStop(i / Math.max(1, CONFIG.colors.length - 1), c));
+      if (glowW > 0) { ctx.lineWidth = 3 * dpr + glowW; ctx.strokeStyle = `rgba(${palette(0.5)},${glowA})`; path(1); ctx.stroke(); if (mirror || CONFIG.mirror) { path(-1); ctx.stroke(); } ctx.lineWidth = 3 * dpr; }
+      ctx.strokeStyle = grad;
+      path(1); ctx.stroke(); if (mirror || CONFIG.mirror) { path(-1); ctx.stroke(); }
+      ctx.fillStyle = `rgba(${palette(0.5)},0.15)`;
+      path(1); ctx.lineTo(W, baseY); ctx.lineTo(0, baseY); ctx.closePath(); ctx.fill();
+    } else {
+      for (let i = 0; i < n; i++) {
+        const h = Math.max(2 * dpr, v[i] * maxH), x = slot * i + (slot - bw) / 2, c = palette(i / n);
+        const r = CONFIG.rounded ? Math.min(bw / 2, 6 * dpr) : 0;
+        if (glowW > 0) { ctx.fillStyle = `rgba(${c},${glowA * 0.6})`; ctx.beginPath(); ctx.roundRect(x - glowW / 2, baseY - h - glowW / 2, bw + glowW, (mirror ? 2 * h : h) + glowW, r + glowW / 2); ctx.fill(); }
+        ctx.fillStyle = `rgb(${c})`;
+        ctx.beginPath(); ctx.roundRect(x, baseY - h, bw, h, [r, r, 0, 0]); ctx.fill();
+        if (mirror) { ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.roundRect(x, baseY, bw, h, [0, 0, r, r]); ctx.fill(); ctx.globalAlpha = 1; }
+      }
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+});
+</script>
+</body>
+</html>

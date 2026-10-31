@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Terrain</title>
+<script src="_ltw.js"></script>
+<script src="_gl.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #070812; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// ---------------- tweak me ----------------
+const CONFIG = {
+  bg: '#070812', line: '#19e6ff', lineFar: '#4a2d8a', peak: '#ff3d81',
+  rows: 36, cols: 56, height: 1.0, speed: 0.5, roughness: 1.0, glow: 0.6, tilt: 0.5,
+  fps: 30,
+};
+const SCHEMA = { pointer: true, groups: [
+  { label: 'Colors', fields: [
+    { key: 'bg', type: 'color', label: 'Sky' }, { key: 'line', type: 'color', label: 'Near lines' },
+    { key: 'lineFar', type: 'color', label: 'Far lines' }, { key: 'peak', type: 'color', label: 'Peaks' },
+  ]},
+  { label: 'Land', fields: [
+    { key: 'rows', type: 'range', label: 'Depth rows', min: 12, max: 80, step: 2 },
+    { key: 'cols', type: 'range', label: 'Columns', min: 16, max: 120, step: 4 },
+    { key: 'height', type: 'range', label: 'Height', min: 0.2, max: 2.5, step: 0.05 },
+    { key: 'roughness', type: 'range', label: 'Roughness', min: 0.2, max: 2.5, step: 0.05 },
+    { key: 'glow', type: 'range', label: 'Glow', min: 0, max: 1.5, step: 0.05 },
+  ]},
+  { label: 'Motion', fields: [
+    { key: 'speed', type: 'range', label: 'Fly speed', min: 0, max: 2, step: 0.05 },
+    { key: 'tilt', type: 'range', label: 'Mouse tilt', min: 0, max: 1, step: 0.05 },
+  ]},
+  { label: 'Performance', fields: [ { key: 'fps', type: 'range', label: 'Frame rate', min: 5, max: 60, step: 1 } ]},
+]};
+LTW.setup(CONFIG, SCHEMA, {});
+// ------------------------------------------
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d', { alpha: false });
+let dpr, W, H;
+function resize() { dpr = 1; W = canvas.width = innerWidth; H = canvas.height = innerHeight; }   // 1x: lines are soft anyway and it halves the fill cost
+resize(); addEventListener('resize', resize);
+// value noise with smooth interpolation (deterministic so the land does not flicker while scrolling)
+const hash = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); };
+function noise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y); let fx = x - xi, fy = y - yi;
+  fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+  const a = hash(xi, yi), b = hash(xi + 1, yi), c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+  return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
+}
+function land(x, z) {
+  const r = CONFIG.roughness;
+  let h = noise(x * 0.9, z * 0.9) * 0.6 + noise(x * 2.1 * r, z * 2.1 * r) * 0.3 + noise(x * 5 * r, z * 5 * r) * 0.1;
+  const valley = Math.min(1, Math.abs(x) * 0.6);     // a flat path down the middle
+  return Math.pow(h, 1.6) * valley * CONFIG.height;
+}
+const rgb = (c) => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
+let z0 = 0, tx = 0, ty = 0;
+LTWLoop(() => CONFIG.fps, (now, dt) => {
+  z0 += dt * CONFIG.speed * 1.2;
+  tx += (LTW.pointer.x * CONFIG.tilt - tx) * 0.06; ty += (LTW.pointer.y * CONFIG.tilt - ty) * 0.06;
+  ctx.fillStyle = CONFIG.bg; ctx.fillRect(0, 0, W, H);
+  const near = rgb(CONFIG.line), far = rgb(CONFIG.lineFar), peak = rgb(CONFIG.peak);
+  const rows = CONFIG.rows | 0, cols = CONFIG.cols | 0;
+  const camH = 1.6 + ty * 0.5, f = H * 0.9, horizon = H * (0.42 - ty * 0.06);
+  const zStart = Math.floor(z0), frac = z0 - zStart;
+  ctx.lineJoin = 'round';
+  // far to near so near rows paint over far ones
+  const pts = [];
+  let lastYc = null;
+  for (let r = rows; r >= 1; r--) {
+    const u = r - frac + 0.5, z = u + 0.08 * u * u, depth = r / rows;   // quadratic spacing spreads the far rows out
+    const row = [];
+    for (let c = 0; c <= cols; c++) {
+      const x = (c / cols - 0.5) * 2 * 6;
+      const y = land(x + tx * 0.3, zStart + z) * (1 - Math.pow(depth, 2.2) * 0.85);   // far rows sink into the fog
+      const sx = W * 0.5 + (x - tx * 0.8) / z * f * 0.5;
+      const sy = horizon + (camH - y) / z * f * 0.5;
+      row.push([sx, sy, y]);
+    }
+    // rows that would land on top of the previous one (far away) are skipped so the horizon stays clean
+    const yc = horizon + camH / z * f * 0.5;
+    if (lastYc != null && Math.abs(yc - lastYc) < 2.5 * dpr) continue;
+    lastYc = yc;
+    // fill the slab below the line with the sky color so lines behind are hidden (solid wireframe look)
+    ctx.beginPath(); ctx.moveTo(row[0][0], H); for (const p of row) ctx.lineTo(p[0], p[1]); ctx.lineTo(row[cols][0], H);
+    ctx.closePath(); ctx.fillStyle = CONFIG.bg; ctx.fill();
+    const mixc = (a, b, k) => [0, 1, 2].map(i => Math.round(a[i] + (b[i] - a[i]) * k));
+    const col = mixc(near, far, Math.pow(depth, 0.7));
+    const alpha = 0.08 + 0.92 * Math.pow(1 - depth, 1.6);
+    ctx.lineWidth = Math.max(0.6, (1.6 - depth * 1.2) * dpr);
+    ctx.beginPath(); ctx.moveTo(row[0][0], row[0][1]);
+    for (let c = 1; c <= cols; c++) ctx.lineTo(row[c][0], row[c][1]);
+    if (CONFIG.glow > 0 && depth < 0.5) {   // glow = one wide faint stroke under the line (shadowBlur is far too slow)
+      ctx.lineWidth = (2 + CONFIG.glow * 7) * dpr * (1 - depth * 2); ctx.strokeStyle = `rgba(${col},${0.18 * CONFIG.glow * alpha})`; ctx.stroke();
+      ctx.lineWidth = Math.max(0.6, (1.6 - depth * 1.2) * dpr);
+    }
+    ctx.strokeStyle = `rgba(${col},${alpha})`; ctx.stroke();
+    // peaks glow in the accent color
+    for (let c = 0; c <= cols; c += 1) if (row[c][2] > 0.9 * CONFIG.height) {
+      ctx.fillStyle = `rgba(${peak},${alpha * 0.9})`; ctx.fillRect(row[c][0] - dpr, row[c][1] - dpr, 2 * dpr, 2 * dpr);
+    }
+    // connectors to the previous (farther) row; the next nearer slab paints over them where it should
+    if (pts.length && depth < 0.7) {
+      const prev = pts[pts.length - 1];
+      ctx.lineWidth = 0.6 * dpr; ctx.strokeStyle = `rgba(${far},${0.4 * (1 - depth)})`;
+      ctx.beginPath();
+      for (let c = 0; c <= cols; c += 4) { ctx.moveTo(prev[c][0], prev[c][1]); ctx.lineTo(row[c][0], row[c][1]); }
+      ctx.stroke();
+    }
+    pts.push(row);
+  }
+  // horizon haze
+  const g = ctx.createLinearGradient(0, horizon - H * 0.15, 0, horizon + H * 0.05);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(${far},0.35)`); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, horizon - H * 0.15, W, H * 0.2);
+});
+</script>
+</body>
+</html>

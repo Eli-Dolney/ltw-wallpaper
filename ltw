@@ -1,0 +1,34 @@
+#!/bin/zsh
+# Control the running wallpaper app from the shell (launches it if needed).
+#   ./ltw scene glyphs        switch scene (name as shown in the menu)
+#   ./ltw next                next scene (shuffles if enabled)
+#   ./ltw pause               pause / resume the animation
+#   ./ltw version             installed version
+#   ./ltw reload              copy ./scenes to the app's folder, then reload the current scene
+#   ./ltw sync                re-sync the system wallpaper snapshot
+#   ./ltw customize           open the Customize window
+#   ./ltw set <key> <json>    change a setting of the current scene, e.g. ./ltw set bg '"#101010"'
+#   ./ltw reset               delete the current scene's saved settings
+#   ./ltw app <key> <json>    change an app setting (Customize → App), e.g. ./ltw app menuIconEmoji '"🌊"'
+#   ./ltw dock <key> <json>   change a macOS Dock setting (Customize → Dock), e.g. ./ltw dock autohide true
+#   ./ltw awake [on|off]      keep the Mac awake (caffeinate) / let it sleep again
+#   ./ltw vol <app> <percent> per-app volume (bundle id or app name), 0-200, 100 = untouched
+#   ./ltw snapshot [out.png]  save the current frame (default: ~/Pictures/Ltw Wallpaper)
+cd "$(dirname "$0")"
+# Prefer the installed copy (./run.sh puts it there) so only one app ever runs.
+APP=/Applications/LtwWallpaper.app
+if [ ! -d "$APP" ]; then APP="$PWD/build/LtwWallpaper.app"; [ -d "$APP" ] || ./build.sh >/dev/null; fi
+enc() { python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"; }
+case "$1" in
+  scene)    open -a "$APP" "ltw://scene/$(enc "$2")" ;;
+  snapshot) out="${2:-$HOME/Pictures/Ltw Wallpaper/LtwWallpaper $(date +%H.%M.%S).png}"; mkdir -p "$(dirname "$out")"; [[ "$out" = /* ]] || out="$PWD/$out"; open -a "$APP" "ltw://snapshot?path=$(enc "$out")" ;;
+  reload)   rsync -a scenes/ "$HOME/Library/Application Support/LtwWallpaper/scenes/"; open -a "$APP" "ltw://reload" ;;
+  set)      open -a "$APP" "ltw://set?key=$(enc "$2")&value=$(enc "$3")" ;;
+  app)      open -a "$APP" "ltw://appset?key=$(enc "$2")&value=$(enc "$3")" ;;
+  dock)     open -a "$APP" "ltw://dock?key=$(enc "$2")&value=$(enc "$3")" ;;
+  awake)    v=true; [ "$2" = off ] && v=false; open -a "$APP" "ltw://appset?key=keepAwake&value=$v" ;;
+  vol)      open -a "$APP" "ltw://vol?key=$(enc "$2")&value=$(enc "$3")" ;;
+  next|sync|customize|reset|pause) open -a "$APP" "ltw://$1" ;;
+  version)  defaults read "$APP/Contents/Info" CFBundleShortVersionString ;;
+  *) sed -n '2,17p' "$0"; exit 1 ;;
+esac

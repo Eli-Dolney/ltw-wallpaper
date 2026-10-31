@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Warp</title>
+<script src="_ltw.js"></script>
+<script src="_gl.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #03040a; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// ---------------- tweak me ----------------
+const CONFIG = {
+  bg: '#03040a', near: '#ffffff', far: '#7aa7ff', accent: '#d97757',
+  count: 500, speed: 0.6, streak: 1.0, size: 1.0, parallax: 0.5,
+  audio: true,          // bass gives the throttle a kick
+  fps: 30,
+};
+const SCHEMA = { audio: true, pointer: true, groups: [
+  { label: 'Colors', fields: [
+    { key: 'bg', type: 'color', label: 'Space' }, { key: 'near', type: 'color', label: 'Near stars' },
+    { key: 'far', type: 'color', label: 'Far stars' }, { key: 'accent', type: 'color', label: 'Accent stars' },
+  ]},
+  { label: 'Stars', fields: [
+    { key: 'count', type: 'range', label: 'Count', min: 100, max: 2000, step: 50, rebuild: true },
+    { key: 'size', type: 'range', label: 'Size', min: 0.4, max: 3, step: 0.1 },
+    { key: 'streak', type: 'range', label: 'Streak length', min: 0, max: 3, step: 0.1 },
+  ]},
+  { label: 'Motion', fields: [
+    { key: 'speed', type: 'range', label: 'Speed', min: 0.05, max: 3, step: 0.05 },
+    { key: 'parallax', type: 'range', label: 'Mouse steering', min: 0, max: 1, step: 0.05 },
+    { key: 'audio', type: 'toggle', label: 'React to music ♪' },
+  ]},
+  { label: 'Performance', fields: [ { key: 'fps', type: 'range', label: 'Frame rate', min: 5, max: 60, step: 1 } ]},
+]};
+LTW.setup(CONFIG, SCHEMA, { rebuild: () => build(), change(k) { if (k === 'near' || k === 'far' || k === 'accent') recolor(); } });
+// ------------------------------------------
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d', { alpha: false });
+let dpr, W, H, stars = [], nearRGB, farRGB, accRGB;
+const rgb = (c) => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
+function recolor() { nearRGB = rgb(CONFIG.near); farRGB = rgb(CONFIG.far); accRGB = rgb(CONFIG.accent); }
+function spawn(s, z) { s.x = (Math.random() - 0.5) * 2; s.y = (Math.random() - 0.5) * 2; s.z = z == null ? Math.random() : z; s.a = Math.random() < 0.08; }
+function build() {
+  dpr = Math.min(devicePixelRatio || 1, 2);
+  W = canvas.width = innerWidth * dpr; H = canvas.height = innerHeight * dpr;
+  recolor();
+  const n = Math.round(CONFIG.count * (innerWidth * innerHeight) / (1470 * 956));
+  stars = Array.from({ length: n }, () => { const s = {}; spawn(s); return s; });
+}
+build(); addEventListener('resize', build);
+let cx = 0, cy = 0, bass = 0;
+LTWLoop(() => CONFIG.fps, (now, dt) => {
+  LTW.audioTick(now);
+  const tb = CONFIG.audio ? LTW.audio.bass : 0;
+  bass += (tb - bass) * (tb > bass ? 0.5 : 0.08);
+  cx += (LTW.pointer.x * CONFIG.parallax * 0.35 - cx) * 0.05;
+  cy += (-LTW.pointer.y * CONFIG.parallax * 0.35 - cy) * 0.05;
+  const v = CONFIG.speed * (1 + bass * 1.6) * dt;
+  ctx.fillStyle = CONFIG.bg; ctx.fillRect(0, 0, W, H);
+  const f = Math.min(W, H) * 0.9, ox = W * (0.5 + cx), oy = H * (0.5 + cy);
+  ctx.lineCap = 'round';
+  for (const s of stars) {
+    const z0 = s.z; s.z -= v * (0.4 + z0);
+    if (s.z <= 0.02) { spawn(s, 1); continue; }
+    const k0 = 1 / z0, k1 = 1 / s.z;
+    const x0 = ox + s.x * f * k0, y0 = oy + s.y * f * k0;
+    const x1 = ox + s.x * f * k1, y1 = oy + s.y * f * k1;
+    if (x1 < -50 || x1 > W + 50 || y1 < -50 || y1 > H + 50) { spawn(s, 1); continue; }
+    const depth = 1 - s.z;                      // 0 far → 1 near
+    const c = s.a ? accRGB : [0, 1, 2].map(i => Math.round(farRGB[i] + (nearRGB[i] - farRGB[i]) * depth));
+    const alpha = Math.min(1, 0.15 + depth * depth * 1.2);
+    ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
+    ctx.lineWidth = Math.max(0.5, (0.5 + depth * 2.2) * CONFIG.size * dpr);
+    const sx = x1 + (x0 - x1) * CONFIG.streak, sy = y1 + (y0 - y1) * CONFIG.streak;
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(x1, y1); ctx.stroke();
+  }
+  // soft center glow that breathes with the music
+  const g = ctx.createRadialGradient(ox, oy, 0, ox, oy, f * 0.35);
+  g.addColorStop(0, `rgba(${farRGB[0]},${farRGB[1]},${farRGB[2]},${0.10 + bass * 0.12})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+});
+</script>
+</body>
+</html>

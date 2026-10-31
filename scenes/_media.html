@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Media</title>
+<script src="_ltw.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  img, video { position: absolute; inset: 0; width: 100vw; height: 100vh; object-fit: cover; }
+</style>
+</head>
+<body>
+<script>
+// Internal wrapper used by the app to show a plain image or video file from the scenes folder.
+const q = new URLSearchParams(location.hash.slice(1));
+const file = q.get('file'), type = q.get('type');
+if (file) {
+  if (type === 'video') {
+    const v = document.createElement('video');
+    v.src = file; v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
+    document.body.appendChild(v); v.play().catch(() => {});
+  } else {
+    const img = new Image(); img.src = file; document.body.appendChild(img);
+  }
+}
+</script>
+</body>
+</html>
