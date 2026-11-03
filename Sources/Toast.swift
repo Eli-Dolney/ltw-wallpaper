@@ -7,7 +7,7 @@ final class Toast {
     private let panel: NSPanel
     private let label = NSTextField(labelWithString: "")
     private let icon = NSImageView()
-    private var hideWork: DispatchWorkItem?
+    private var hideTimer: Timer?
 
     private init() {
         panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 44), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -59,16 +59,23 @@ final class Toast {
         let v = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         panel.setFrame(NSRect(x: v.midX - w / 2, y: v.minY + 64, width: w, height: h), display: true)
         panel.contentView?.frame = NSRect(x: 0, y: 0, width: w, height: h)
-        hideWork?.cancel()
+        hideTimer?.invalidate()
         panel.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.12; panel.animator().alphaValue = 1 }
-        let work = DispatchWorkItem { [weak self] in
-            guard let self = self else { return }
-            NSAnimationContext.runAnimationGroup({ ctx in ctx.duration = 0.3; self.panel.animator().alphaValue = 0 },
-                                                completionHandler: { if self.panel.alphaValue == 0 { self.panel.orderOut(nil) } })
-        }
-        hideWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+        // A Timer in the common run-loop modes keeps firing while a modal alert is up; a main-queue
+        // dispatch would wait for the alert to close.
+        let t = Timer(timeInterval: seconds, repeats: false) { [weak self] _ in self?.fadeOut() }
+        RunLoop.main.add(t, forMode: .common)
+        hideTimer = t
+    }
+
+    /// Hides the HUD now (before a dialog takes over, for instance).
+    static func hide() { shared.hideTimer?.invalidate(); shared.fadeOut() }
+
+    private func fadeOut() {
+        guard panel.isVisible else { return }
+        NSAnimationContext.runAnimationGroup({ ctx in ctx.duration = 0.3; panel.animator().alphaValue = 0 },
+                                            completionHandler: { [panel] in if panel.alphaValue == 0 { panel.orderOut(nil) } })
     }
 }
 

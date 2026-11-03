@@ -268,6 +268,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
     @objc func checkForUpdates() {
         Toast.show("Checking for updates…", symbol: "arrow.triangle.2.circlepath")
         Updater.latest { [weak self] result in
+            Toast.hide()
             let alert = NSAlert()
             alert.alertStyle = .informational
             switch result {
