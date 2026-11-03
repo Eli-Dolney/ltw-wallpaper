@@ -51,7 +51,8 @@ apply live and are saved per scene in `~/Library/Application Support/LtwWallpape
   menu as **Keep Awake** (⌘K) and `./ltw awake on|off`.
 - **Scenes**: change the scene automatically every 15 min … daily, optionally shuffled.
 - **Shortcuts**: global hotkeys ⌃⌥N next scene, ⌃⌥P pause/resume animation, ⌃⌥K keep awake,
-  ⌃⌥M mixer, ⌃⌥C customize, ⌃⌥Space the menu at the cursor, ⌃⌥W window wheel, ⌃⌥Tab app wheel. Only the window wheel (and the
+  ⌃⌥M mixer, ⌃⌥C customize, ⌃⌥Space the menu at the cursor, ⌃⌥D hide or show the desktop icons,
+  ⌃⌥W window wheel, ⌃⌥Tab app wheel. Only the window wheel (and the
   app wheel's "windows" mode) needs the Accessibility permission.
 - **Window wheel**: the GTA-style radial menu for windows (below). Size, how much to dim the screen
   behind it, and a gap to leave between tiled windows.
@@ -90,7 +91,8 @@ are remembered per app. Shell: `./ltw vol <app> <percent>` (bundle id or app nam
 GPU utilization; memory as app / wired / compressed / cached with swap; battery with time left, power
 draw in watts, health, cycle count and temperature; network down/up with the active interface and
 totals since boot; disk read/write and free space; uptime, process count, thermal state, and what the
-wallpaper itself costs; plus the top processes by CPU. Customize → App → **Monitor** sets the update
+wallpaper itself costs; plus the top processes by CPU, by memory, or by app with every helper process
+folded into its parent (so Chrome shows as one line with its sixteen renderers). Customize → App → **Monitor** sets the update
 interval (1–10 s), whether three summary lines sit at the top of the menu, and a compact readout next
 to the menu bar icon (CPU, GPU, both, memory, battery with time left, watts, download, download +
 upload, disk, load or battery temperature). `./ltw stats` prints the same report in the terminal
@@ -267,7 +269,8 @@ LTW.setup(CONFIG, SCHEMA, { rebuild: () => build(), change(key, value) { /* opti
   `swapUsed/Total`, `battery`, `charging`, `pluggedIn`, `timeRemaining` (min), `cycles`, `health`,
   `watts`, `batteryTemp`, `gpu`, `diskRead/Write` (B/s), `diskFree/Total`, `netIn/Out` (B/s),
   `netTotalIn/Out`, `netInterface`, `thermal`, `uptime`, `processes`, `self` (`{cpu, mem}` of the
-  wallpaper) and `top` (`[{pid, name, cpu, mem}]`); fractions are 0…1 and sizes are bytes, with `null`
+  wallpaper), `top` (`[{pid, name, cpu, mem}]` by CPU), `topMem` (the same by memory) and `topApps`
+  (`[{name, cpu, mem, count}]`, helpers summed into their app); fractions are 0…1 and sizes are bytes, with `null`
   where the Mac has no such thing (no battery, no GPU counter). In a browser a demo sample is generated
   every 2 s. `monitor.html` is the worked example.
 - `_gl.js` has a tiny helper for full-screen shader scenes (`GL(canvas, fragmentSource)` and the
@@ -356,6 +359,14 @@ The lock screen is drawn by macOS from that same system wallpaper, and nothing c
 except Apple's built-in wallpapers. With **Lock screen shows the last frame** (on by default) the app
 takes one more snapshot the instant the screen locks, the displays sleep or you switch users, before
 the scene pauses, so the lock screen shows exactly what was on your desktop when you walked away.
+
+## A clean desktop
+
+**⌃⌥D** (or System → Hide Desktop Icons, or `./ltw icons off`) hides every icon so the scene shows
+on its own; press it again to bring them back. Nothing is moved: Finder just stops drawing the
+Desktop folder (it restarts once, which takes about a second). macOS itself can do the same per
+account under System Settings → Desktop & Dock → *Show Items → On Desktop*, and Stage Manager
+hides them until you click the wallpaper.
 
 ## Can't find the menu bar icon?
 

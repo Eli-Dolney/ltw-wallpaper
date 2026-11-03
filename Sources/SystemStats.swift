@@ -14,6 +14,14 @@ final class SystemStats {
         var mem: Double      // resident bytes
     }
 
+    /// An app and all its helper processes ("Google Chrome" + 15 renderers).
+    struct AppGroup {
+        var name: String
+        var cpu: Double
+        var mem: Double
+        var count: Int
+    }
+
     struct Sample {
         var cpu = 0.0, cpuUser = 0.0, cpuSystem = 0.0     // 0..1 of all cores
         var cores: [Double] = []                           // 0..1 per core
@@ -38,7 +46,9 @@ final class SystemStats {
         var uptime = 0.0
         var processes = 0
         var selfCpu = 0.0, selfMem = 0.0                   // this app
-        var top: [Process]?                                // detailed samples only
+        var top: [Process]?                                // detailed samples only: by CPU
+        var topMem: [Process]?                             // by memory
+        var topApps: [AppGroup]?                           // helpers folded into their app, by memory
 
         var json: [String: Any] {
             func opt(_ v: Double?) -> Any { v.map { $0 as Any } ?? NSNull() }
@@ -54,7 +64,10 @@ final class SystemStats {
                 "thermal": thermal, "uptime": uptime, "processes": processes,
                 "self": ["cpu": selfCpu, "mem": selfMem],
             ]
-            if let t = top { d["top"] = t.map { ["pid": Int($0.pid), "name": $0.name, "cpu": $0.cpu, "mem": $0.mem] } }
+            let proc = { (p: Process) -> [String: Any] in ["pid": Int(p.pid), "name": p.name, "cpu": p.cpu, "mem": p.mem] }
+            if let t = top { d["top"] = t.map(proc) }
+            if let t = topMem { d["topMem"] = t.map(proc) }
+            if let t = topApps { d["topApps"] = t.map { ["name": $0.name, "cpu": $0.cpu, "mem": $0.mem, "count": $0.count] } }
             return d
         }
     }
@@ -317,15 +330,22 @@ final class SystemStats {
             times[pid] = ns
             let mem = Double(ti.pti_resident_size)
             if pid == me { s.selfMem = mem }
-            guard dt > 0, dt < 600, let prev = procTime[pid], ns >= prev else { continue }
-            let cpu = Double(ns - prev) / 1e9 / dt
+            var cpu = 0.0
+            if dt > 0, dt < 600, let prev = procTime[pid], ns >= prev { cpu = Double(ns - prev) / 1e9 / dt }
             if pid == me { s.selfCpu = cpu }
-            if cpu < 0.005 { continue }
+            if cpu < 0.005, mem < 50e6 { continue }   // tiny and idle: not worth a name lookup
             var name = procNames[pid] ?? apps[pid] ?? ""
             if name.isEmpty {
                 var buf = [CChar](repeating: 0, count: 256)
                 proc_name(pid, &buf, 256)
                 name = String(cString: buf)
+                if name.utf8.count >= 31 {   // proc_name truncates at 32 bytes; the executable's name is complete
+                    var path = [CChar](repeating: 0, count: 4096)
+                    if proc_pidpath(pid, &path, UInt32(path.count)) > 0 {
+                        let full = String(cString: path)
+                        if let last = full.split(separator: "/").last, !last.isEmpty { name = String(last) }
+                    }
+                }
                 if name.hasPrefix("com.apple.WebKit.") { name = String(name.dropFirst("com.apple.WebKit.".count)) }
                 procNames[pid] = name
             }
@@ -333,7 +353,27 @@ final class SystemStats {
         }
         procTime = times
         procNames = procNames.filter { times[$0.key] != nil }
-        s.top = Array(procs.sorted { $0.cpu > $1.cpu }.prefix(8))
+        s.top = Array(procs.filter { $0.cpu >= 0.005 }.sorted { $0.cpu > $1.cpu }.prefix(8))
+        s.topMem = Array(procs.sorted { $0.mem > $1.mem }.prefix(8))
+        var groups: [String: AppGroup] = [:]
+        for p in procs {
+            let f = Self.family(p.name)
+            var g = groups[f] ?? AppGroup(name: f, cpu: 0, mem: 0, count: 0)
+            g.cpu += p.cpu; g.mem += p.mem; g.count += 1
+            groups[f] = g
+        }
+        s.topApps = Array(groups.values.sorted { $0.mem > $1.mem }.prefix(8))
+    }
+
+    /// "Google Chrome Helper (Renderer)" → "Google Chrome", "Ltw Wallpaper Web Content" → "Ltw Wallpaper".
+    static func family(_ name: String) -> String {
+        var n = name
+        if let r = n.range(of: #" Helper\b.*$"#, options: .regularExpression) { n.removeSubrange(r) }
+        if let r = n.range(of: #" \((Renderer|Service|GPU|Plugin|Plug-in|Utility|Network)[^)]*\)$"#, options: .regularExpression) { n.removeSubrange(r) }
+        for suffix in [" Web Content", " Graphics and Media", " Networking", "WebContent", "GPU", "Networking"] where n.hasSuffix(suffix) && n != suffix {
+            n = String(n.dropLast(suffix.count)).trimmingCharacters(in: .whitespaces)
+        }
+        return n.isEmpty ? name : n
     }
 
     // MARK: Formatting
@@ -413,7 +453,13 @@ final class SystemStats {
         let up = Int(s.uptime)
         out.append("System   up \(up / 86400)d \(up % 86400 / 3600)h \(up % 3600 / 60)m   \(s.processes) processes   thermal \(s.thermal)   wallpaper \(String(format: "%.1f%%", s.selfCpu * 100)) / \(Self.bytes(s.selfMem))")
         if let top = s.top, !top.isEmpty {
-            out.append("Top      " + top.prefix(6).map { String(format: "%@ %.0f%%", $0.name, $0.cpu * 100) }.joined(separator: ", "))
+            out.append("Top CPU  " + top.prefix(6).map { String(format: "%@ %.0f%%", $0.name, $0.cpu * 100) }.joined(separator: ", "))
+        }
+        if let top = s.topMem, !top.isEmpty {
+            out.append("Top mem  " + top.prefix(6).map { "\($0.name) \(Self.bytes($0.mem))" }.joined(separator: ", "))
+        }
+        if let apps = s.topApps, !apps.isEmpty {
+            out.append("By app   " + apps.prefix(6).map { "\($0.name)\($0.count > 1 ? " ×\($0.count)" : "") \(Self.bytes($0.mem))" }.joined(separator: ", "))
         }
         return out.joined(separator: "\n")
     }

@@ -181,7 +181,7 @@
 // ---------------- tweak me ----------------
 const CONFIG = {
   // tiles
-  tileCpu: true, tileGpu: true, tileMem: true, tileNet: true, tileDisk: true, tileBat: true, tileTop: false, tileSys: true, topRows: 6,
+  tileCpu: true, tileGpu: true, tileMem: true, tileNet: true, tileDisk: true, tileBat: true, tileTop: false, tileSys: true, topRows: 6, topSort: 'cpu',
   // layout
   layout: 'grid',            // grid | sidebar-left | sidebar-right | bar-top | bar-bottom | corner
   corner: 'top-right', columns: 3, scale: 1, margin: 56,
@@ -206,6 +206,7 @@ const SCHEMA = { stats: true, groups: [
     { key: 'tileDisk', type: 'toggle', label: 'Disk' }, { key: 'tileBat', type: 'toggle', label: 'Battery' },
     { key: 'tileTop', type: 'toggle', label: 'Top processes' },
     { key: 'topRows', type: 'range', label: 'Process rows', min: 5, max: 8, step: 1, showIf: { key: 'tileTop', is: true } },
+    { key: 'topSort', type: 'select', label: 'Rank by', options: [{ value: 'cpu', label: 'CPU' }, { value: 'mem', label: 'Memory' }, { value: 'app', label: 'Memory, helpers folded into their app' }], showIf: { key: 'tileTop', is: true } },
     { key: 'tileSys', type: 'toggle', label: 'System' },
     { key: 'noteTiles', type: 'note', label: 'GPU and Battery hide themselves when this Mac has no reading for them.' },
   ]},
@@ -254,7 +255,14 @@ const SCHEMA = { stats: true, groups: [
     { key: 'fps', type: 'range', label: 'Background frame rate', min: 5, max: 60, step: 1 },
   ]},
 ]};
-const REBUILD = new Set(['layout', 'corner', 'columns', 'tileCpu', 'tileGpu', 'tileMem', 'tileNet', 'tileDisk', 'tileBat', 'tileTop', 'tileSys', 'topRows']);
+const REBUILD = new Set(['layout', 'corner', 'columns', 'tileCpu', 'tileGpu', 'tileMem', 'tileNet', 'tileDisk', 'tileBat', 'tileTop', 'tileSys', 'topRows', 'topSort']);
+// The process list the Top tile ranks by (CONFIG.topSort): by CPU, by memory, or apps with their helpers summed.
+function topList(s) {
+  const m = CONFIG.topSort === 'mem' ? s.topMem : CONFIG.topSort === 'app' ? s.topApps : null;
+  const list = (m && m.length ? m : (s.top || [])).slice();
+  const byMem = CONFIG.topSort !== 'cpu' && m && m.length;
+  return { list: list.sort((a, b) => byMem ? (b.mem || 0) - (a.mem || 0) : (b.cpu || 0) - (a.cpu || 0)), byMem };
+}
 LTW.setup(CONFIG, SCHEMA, {
   change(k, v) {
     if (k === 'bg') buildBackground();
@@ -580,25 +588,28 @@ const TILES = [
       t.querySelector('.val').innerHTML = `${pct(V.battery)}${S.charging ? ' ⚡︎' : ''} <small>${S.timeRemaining == null ? (S.pluggedIn ? 'on power' : '') : fmtMin(S.timeRemaining) + (S.charging ? ' to full' : ' left')}</small>`;
     } },
 
-  { key: 'tileTop', id: 'top', visible: s => Array.isArray(s.top) && s.top.length > 0,
+  { key: 'tileTop', id: 'top', visible: s => topList(s).list.length > 0,
     build(t) {
       const n = Math.max(1, Math.round(CONFIG.topRows) || 6);
-      t.innerHTML = title('Top processes', '<span class="xs">cpu · memory</span>') + `<div class="plist">${'<div class="prow"><span class="pn"></span><div class="bar"><i></i></div><span class="pc"></span><span class="pm"></span></div>'.repeat(n)}</div>`;
+      const sub = CONFIG.topSort === 'app' ? 'by app · memory' : CONFIG.topSort === 'mem' ? 'memory · cpu' : 'cpu · memory';
+      t.innerHTML = title(CONFIG.topSort === 'app' ? 'Top apps' : 'Top processes', `<span class="xs">${sub}</span>`) + `<div class="plist">${'<div class="prow"><span class="pn"></span><div class="bar"><i></i></div><span class="pc"></span><span class="pm"></span></div>'.repeat(n)}</div>`;
     },
     draw(t) {
-      const rows = t.querySelectorAll('.prow'), list = (S.top || []).slice().sort((a, b) => (b.cpu || 0) - (a.cpu || 0));
-      const scale = Math.max(1, list[0] ? (V.top[list[0].pid] != null ? V.top[list[0].pid] : list[0].cpu) : 1);
+      const rows = t.querySelectorAll('.prow'), { list, byMem } = topList(S);
+      const cpuOf = p => (p.pid != null && V.top[p.pid] != null) ? V.top[p.pid] : (p.cpu || 0);
+      const scale = Math.max(byMem ? 1e6 : 1, list[0] ? (byMem ? list[0].mem : cpuOf(list[0])) : 1);
       rows.forEach((row, i) => {
         const p = list[i]; row.style.visibility = p ? '' : 'hidden'; if (!p) return;
-        const c = V.top[p.pid] != null ? V.top[p.pid] : p.cpu;
-        setText(row.querySelector('.pn'), p.name || String(p.pid)); setW(row.querySelector('.bar i'), c / scale);
-        setText(row.querySelector('.pc'), pct(c)); setText(row.querySelector('.pm'), fmtB(p.mem));
+        const name = (p.name || String(p.pid)) + (p.count > 1 ? ' ×' + p.count : '');
+        setText(row.querySelector('.pn'), name); setW(row.querySelector('.bar i'), (byMem ? p.mem : cpuOf(p)) / scale);
+        setText(row.querySelector('.pc'), byMem ? fmtB(p.mem) : pct(cpuOf(p))); setText(row.querySelector('.pm'), byMem ? pct(cpuOf(p)) : fmtB(p.mem));
       });
     },
     cbuild(t) { t.innerHTML = `<div class="txt"><div class="lab">Top</div><div class="val">—</div></div>`; },
     cdraw(t) {
-      const list = (S.top || []).slice().sort((a, b) => (b.cpu || 0) - (a.cpu || 0)).slice(0, 2);
-      t.querySelector('.val').innerHTML = list.map(p => `${p.name} <small>${pct(V.top[p.pid] != null ? V.top[p.pid] : p.cpu)}</small>`).join(' <span class="arrow">·</span> ') || '—';
+      const { list, byMem } = topList(S);
+      const cpuOf = p => (p.pid != null && V.top[p.pid] != null) ? V.top[p.pid] : (p.cpu || 0);
+      t.querySelector('.val').innerHTML = list.slice(0, 2).map(p => `${p.name}${p.count > 1 ? ' ×' + p.count : ''} <small>${byMem ? fmtB(p.mem) : pct(cpuOf(p))}</small>`).join(' <span class="arrow">·</span> ') || '—';
     } },
 
   { key: 'tileSys', id: 'sys', visible: () => true,
@@ -674,6 +685,8 @@ function demoSample(p) {
     netIn, netOut, netTotalIn: (p ? p.netTotalIn : 48.2e9) + netIn * 2, netTotalOut: (p ? p.netTotalOut : 12.1e9) + netOut * 2, netInterface: 'en0',
     thermal: cpu > 0.88 ? 'serious' : cpu > 0.75 ? 'fair' : 'nominal', uptime: (p ? p.uptime : 3 * 86400 + 4 * 3600 + 12 * 60) + 2, processes: 480 + Math.round(Math.random() * 6),
     self: { cpu: 0.008 + Math.random() * 0.012, mem: 92e6 }, top,
+    topMem: top.slice().sort((a, b) => b.mem - a.mem),
+    topApps: [['Final Cut Pro', 3.4e9, 2], ['Xcode', 2.8e9, 5], ['Safari', 1.6e9, 9], ['Code', 0.8e9, 6], ['kernel_task', 0.6e9, 1], ['Spotify', 0.4e9, 3]].map(([name, mem, count]) => ({ name, mem, cpu: 0.02 + Math.random() * 0.4, count })),
   };
 }
 function startDemo() {

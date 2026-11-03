@@ -144,6 +144,8 @@
         thermal: cpu > 0.9 ? 'fair' : 'nominal', uptime: 86400 * 3 + 4000 + t, processes: 612 + Math.round(Math.random() * 6),
         self: { cpu: 0.02 + Math.random() * 0.03, mem: 1.1e8 },
         top: [['WindowServer', 0.18], ['Claude', 0.12 + cpu * 0.3], ['Safari', 0.09], ['WebContent', 0.07 + gpu * 0.1], ['kernel_task', 0.05], ['Music', 0.03]].map(([name, c], i) => ({ pid: 100 + i, name, cpu: c, mem: 2e8 + i * 1.3e8 })),
+        topMem: [['Claude Helper (Renderer)', 1.02e9], ['WindowServer', 0.77e9], ['Google Chrome Helper (Renderer)', 0.39e9], ['Claude', 0.37e9], ['Google Chrome', 0.31e9], ['Safari', 0.28e9]].map(([name, m], i) => ({ pid: 200 + i, name, cpu: 0.02 + Math.random() * 0.1, mem: m })),
+        topApps: [['Google Chrome', 2.3e9, 16], ['Claude', 1.9e9, 4], ['WindowServer', 0.77e9, 1], ['Safari', 0.6e9, 3], ['Music', 0.2e9, 1]].map(([name, m, c]) => ({ name, mem: m, cpu: 0.03 + Math.random() * 0.2, count: c })),
       });
       L.statsLive = false;
     }, 2000);

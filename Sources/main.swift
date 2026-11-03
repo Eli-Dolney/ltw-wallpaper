@@ -175,6 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
         hotkeys.register(id: 4, keyCode: UInt32(kVK_ANSI_M), modifiers: mods) { [weak self] in self?.openMixer() }
         hotkeys.register(id: 5, keyCode: UInt32(kVK_ANSI_C), modifiers: mods) { [weak self] in self?.toggleCustomize() }
         hotkeys.register(id: 8, keyCode: UInt32(kVK_Space), modifiers: mods) { [weak self] in self?.menuAtCursor() }
+        hotkeys.register(id: 9, keyCode: UInt32(kVK_ANSI_D), modifiers: mods) { [weak self] in self?.toggleDesktopIcons() }
         if settings.bool("wheel") {
             hotkeys.register(id: 6, keyCode: UInt32(kVK_ANSI_W), modifiers: mods,
                              released: { [weak self] in self?.wheel.released() }) { [weak self] in self?.showWheel(sticky: false) }
@@ -371,7 +372,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
                                                      .version: ""])
     }
 
-    @objc func toggleDesktopIcons() { SystemActions.setDesktopIconsHidden(!SystemActions.desktopIconsHidden) }
+    @objc func toggleDesktopIcons() { setDesktopIcons(hidden: !SystemActions.desktopIconsHidden) }
+
+    /// ⌃⌥D, the System menu and `ltw://icons`: a clean desktop (Finder restarts; the files stay in ~/Desktop).
+    func setDesktopIcons(hidden: Bool) {
+        SystemActions.setDesktopIconsHidden(hidden)
+        Toast.show(hidden ? "Desktop icons hidden (⌃⌥D brings them back)" : "Desktop icons shown", symbol: hidden ? "rectangle.dashed" : "rectangle.grid.2x2")
+    }
     @objc func toggleDarkMode() { SystemActions.toggleDarkMode() }
     @objc func sleepDisplay() { SystemActions.sleepDisplay() }
     @objc func startScreenSaver() { SystemActions.startScreenSaver() }
@@ -1045,7 +1052,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
         let system = NSMenuItem(title: "System", action: nil, keyEquivalent: "")
         system.image = symbol("macwindow")
         let sys = NSMenu()
-        let icons = add(sys, "Hide Desktop Icons", #selector(toggleDesktopIcons), "", "rectangle.dashed")
+        let icons = add(sys, "Hide Desktop Icons", #selector(toggleDesktopIcons), "d", "rectangle.dashed")
         icons.state = SystemActions.desktopIconsHidden ? .on : .off
         icons.toolTip = "Finder restarts to hide or show the icons; the wallpaper stays."
         add(sys, "Toggle Dark Mode", #selector(toggleDarkMode), "", "circle.lefthalf.filled")
@@ -1174,6 +1181,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
             customize()
         case "menu":
             menuAtCursor()
+        case "icons":
+            let v = url.pathComponents.dropFirst().first ?? ""
+            setDesktopIcons(hidden: v == "off" || v == "hide" || (v.isEmpty && !SystemActions.desktopIconsHidden))
         case "wheel":
             showWheel(sticky: true)
         case "apps":

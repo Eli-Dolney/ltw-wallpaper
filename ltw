@@ -8,6 +8,7 @@
 #   ./ltw sync                re-sync the system wallpaper snapshot
 #   ./ltw customize           open the Customize window
 #   ./ltw menu                open the menu bar menu at the cursor (⌃⌥Space does the same)
+#   ./ltw icons [on|off]      show / hide the desktop icons for a clean desktop (⌃⌥D toggles)
 #   ./ltw set <key> <json>    change a setting of the current scene, e.g. ./ltw set bg '"#101010"'
 #   ./ltw reset               delete the current scene's saved settings
 #   ./ltw app <key> <json>    change an app setting (Customize → App), e.g. ./ltw app menuIconEmoji '"🌊"'
@@ -54,6 +55,7 @@ case "$1" in
     esac ;;
   stats)    dump stats "$2" ;;
   update)   open -a "$APP" "ltw://update" ;;
+  icons)    open -a "$APP" "ltw://icons/${2:-toggle}" ;;
   next|sync|customize|reset|pause|wheel|menu) open -a "$APP" "ltw://$1" ;;
   version)  defaults read "$APP/Contents/Info" CFBundleShortVersionString ;;
   *) sed -n '2,25p' "$0"; exit 1 ;;

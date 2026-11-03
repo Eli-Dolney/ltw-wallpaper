@@ -156,7 +156,7 @@
     <div class="card" id="c-net"><div class="hd"><div class="k">Network</div><span class="small" id="st-if"></span></div><div class="v small" id="st-net">—</div><canvas class="spark" id="sp-net"></canvas><div class="sub"><span id="st-nettot"></span></div></div>
     <div class="card" id="c-disk"><div class="hd"><div class="k">Disk</div><span class="small" id="st-diskfree"></span></div><div class="v small" id="st-disk">—</div><canvas class="spark" id="sp-disk"></canvas><div class="meter"><i id="st-diskbar"></i></div></div>
     <div class="card" id="c-sys"><div class="k">System</div><div class="v small" id="st-up">—</div><div class="sub"><span id="st-procs"></span><span id="st-self"></span></div></div>
-    <div class="card wide" id="c-top"><div class="hd"><div class="k">Top processes</div><span class="small">% of one core</span></div><div class="procs" id="st-top"></div></div>
+    <div class="card wide" id="c-top"><div class="hd"><div class="k">Top processes</div><select id="st-sort" class="small" style="padding:2px 6px;font-size:11px"><option value="cpu">by CPU</option><option value="mem">by memory</option><option value="app">by app (memory)</option></select></div><div class="procs" id="st-top"></div></div>
   </div>
   <div class="hint">Stats update every few seconds (Customize → App → Monitor). The Monitor scene shows all of this on the wallpaper; <code>./ltw stats</code> prints it.</div>
 </section>
@@ -368,13 +368,16 @@ function drawStats() {
   $('st-procs').textContent = (s.processes || 0) + ' processes';
   $('st-self').textContent = s.self ? 'wallpaper ' + (s.self.cpu * 100).toFixed(1) + '% · ' + fmtBytes(s.self.mem) : '';
   // Top
-  const top = $('st-top'); const list = s.top || [];
+  const top = $('st-top'), sort = $('st-sort').value;
+  const list = (sort === 'mem' ? s.topMem : sort === 'app' ? s.topApps : s.top) || s.top || [];
+  const byMem = sort !== 'cpu';
   $('c-top').hidden = !list.length;
   top.innerHTML = '';
-  const maxCpu = Math.max(0.25, ...list.map(p => p.cpu));
+  const max = Math.max(byMem ? 1e6 : 0.25, ...list.map(p => byMem ? p.mem : p.cpu));
   for (const p of list) {
     const row = document.createElement('div'); row.className = 'proc';
-    row.innerHTML = `<span class="n">${esc(p.name)}</span><span class="c">${(p.cpu * 100).toFixed(0)}%</span><span class="m">${fmtBytes(p.mem)}</span><span class="b"><i style="width:${Math.min(100, p.cpu / maxCpu * 100)}%"></i></span>`;
+    const name = esc(p.name) + (p.count > 1 ? ` <span style="color:var(--dim)">×${p.count}</span>` : '');
+    row.innerHTML = `<span class="n">${name}</span><span class="c">${byMem ? fmtBytes(p.mem) : (p.cpu * 100).toFixed(0) + '%'}</span><span class="m">${byMem ? (p.cpu * 100).toFixed(0) + '%' : fmtBytes(p.mem)}</span><span class="b"><i style="width:${Math.min(100, (byMem ? p.mem : p.cpu) / max * 100)}%"></i></span>`;
     top.appendChild(row);
   }
 }
@@ -515,6 +518,7 @@ function field(c, f) {
 }
 
 document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+document.getElementById('st-sort').addEventListener('change', drawStats);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') post({ type: 'close' }); });
 // Drag the window by any empty area, label or heading (controls keep working as controls).
 document.addEventListener('mousedown', (e) => {
