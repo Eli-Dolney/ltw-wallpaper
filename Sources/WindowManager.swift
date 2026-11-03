@@ -110,13 +110,18 @@ final class WindowManager {
 
     /// The focused (or main, or first) window of the app the user is working in.
     func frontmost() -> Target? {
-        guard let app = userApp() else { return nil }
+        guard let app = userApp() else {
+            log.notice("windows: no user app (front \(NSWorkspace.shared.frontmostApplication?.localizedName ?? "nil", privacy: .public), recent \(self.recent.count))")
+            return nil
+        }
         let ax = AXUIElementCreateApplication(app.processIdentifier)
         for attr in [kAXFocusedWindowAttribute, kAXMainWindowAttribute] {
             var value: CFTypeRef?
-            if AXUIElementCopyAttributeValue(ax, attr as CFString, &value) == .success, let v = value, CFGetTypeID(v) == AXUIElementGetTypeID() {
+            let err = AXUIElementCopyAttributeValue(ax, attr as CFString, &value)
+            if err == .success, let v = value, CFGetTypeID(v) == AXUIElementGetTypeID() {
                 return Target(window: v as! AXUIElement, app: app)
             }
+            log.notice("windows: \(attr, privacy: .public) of \(app.localizedName ?? "?", privacy: .public) failed: AXError \(err.rawValue) trusted \(WindowManager.trusted)")
         }
         if let w = windows(of: app).first { return Target(window: w, app: app) }
         return nil
