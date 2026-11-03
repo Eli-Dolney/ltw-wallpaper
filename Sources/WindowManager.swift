@@ -60,9 +60,14 @@ final class WindowManager {
     var gap: CGFloat = 0
 
     static var trusted: Bool { AXIsProcessTrusted() }
+    private static var prompted = false
 
-    /// Shows the system prompt (once) and opens the Accessibility pane.
-    static func requestTrust() {
+    /// Shows the system prompt and opens the Accessibility pane, once per launch unless `force`
+    /// (the "Allow Window Management…" menu item). The wheel itself just says "Allow Accessibility"
+    /// in its hub after that.
+    static func requestTrust(force: Bool = false) {
+        guard force || !prompted else { return }
+        prompted = true
         let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         if !AXIsProcessTrustedWithOptions(opts) {
             NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)

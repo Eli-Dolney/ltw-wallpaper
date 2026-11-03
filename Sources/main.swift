@@ -206,7 +206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
         windowManager.apply(layout)
     }
 
-    @objc func allowWindowManagement() { WindowManager.requestTrust() }
+    @objc func allowWindowManagement() { WindowManager.requestTrust(force: true) }
 
     var thumbsDir: URL { scenesDir.appendingPathComponent("_thumbs", isDirectory: true) }
 
