@@ -650,6 +650,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
                 "index": w.screenIndex, "count": screens.count,
                 "width": Double(screen.frame.width), "height": Double(screen.frame.height),
                 "scale": Double(screen.backingScaleFactor),
+                // What the menu bar (and notch) and the Dock cover, in points. Scenes keep text and
+                // widgets out of these strips; backgrounds run edge to edge underneath.
+                "insets": ["top": Double(screen.frame.maxY - screen.visibleFrame.maxY),
+                           "bottom": Double(screen.visibleFrame.minY - screen.frame.minY),
+                           "left": Double(screen.visibleFrame.minX - screen.frame.minX),
+                           "right": Double(screen.frame.maxX - screen.visibleFrame.maxX)],
             ],
             "images": listImages(),
             "scenesPath": scenesDir.path,
@@ -934,7 +940,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
         switch key {
         case "menuIcon", "menuIconEmoji", "menuIconImage", "menuIconColor", "menuShowScene", "menuReadout":
             updateStatusIcon()
-        case "menuBarMode", "menuBarColor", "menuBarDim":
+        case "menuBarMode", "menuBarColor", "menuBarDim", "menuBarBlur":
             if menuBarMode == "off" { syncWork?.cancel(); restoreOriginalWallpaper() } else { scheduleWallpaperSync(after: 0.4) }
             restartRefreshTimer()
         case "menuBarRefresh":
@@ -1285,6 +1291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
         try? fm.createDirectory(at: syncDir, withIntermediateDirectories: true)
         let screens = NSScreen.screens
         let dim = CGFloat(settings.double("menuBarDim"))
+        let blur = force ? 0 : CGFloat(settings.double("menuBarBlur"))   // the lock-screen frame stays sharp
         for w in windows {
             guard screens.indices.contains(w.screenIndex) else { continue }
             let screen = screens[w.screenIndex]
@@ -1299,11 +1306,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
                 continue
             }
             w.webView.takeSnapshot(with: nil) { [weak self] image, _ in
-                guard let self = self, let tiff = image?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return }
+                guard let self = self, let tiff = image?.tiffRepresentation, var rep = NSBitmapImageRep(data: tiff) else { return }
+                // The menu bar (and the translucent Dock) show this still frame next to the moving scene;
+                // a blur turns frozen detail into a soft tint so there is no visible seam.
+                if blur > 0, let b = self.blurred(rep, radius: blur * screen.backingScaleFactor) { rep = b }
                 if dim > 0 { self.draw(into: rep) { r in NSColor.black.withAlphaComponent(dim).setFill(); r.fill(using: .sourceOver) } }
                 self.setSystemWallpaper(rep, for: screen, index: w.screenIndex)
             }
         }
+    }
+
+    /// Gaussian blur with clamped edges (no dark border), same size as the input.
+    func blurred(_ rep: NSBitmapImageRep, radius: CGFloat) -> NSBitmapImageRep? {
+        guard let cg = rep.cgImage else { return nil }
+        let input = CIImage(cgImage: cg)
+        let clamped = input.clampedToExtent()
+        guard let f = CIFilter(name: "CIGaussianBlur") else { return nil }
+        f.setValue(clamped, forKey: kCIInputImageKey)
+        f.setValue(radius, forKey: kCIInputRadiusKey)
+        guard let out = f.outputImage?.cropped(to: input.extent) else { return nil }
+        let ctx = CIContext(options: [.useSoftwareRenderer: false])
+        guard let result = ctx.createCGImage(out, from: input.extent) else { return nil }
+        let r = NSBitmapImageRep(cgImage: result)
+        r.size = rep.size
+        return r
     }
 
     func draw(into rep: NSBitmapImageRep, _ body: (NSRect) -> Void) {

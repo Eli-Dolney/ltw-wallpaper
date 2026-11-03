@@ -125,7 +125,10 @@ let nextWord = 1.5, nextSweep = 3, sweepStart = -99;
 function spawnWord(t) {
   const w = CONFIG.words[(Math.random() * CONFIG.words.length) | 0];
   if (w.length + 2 > cols) return;
-  const r = 1 + ((Math.random() * (rows - 2)) | 0);
+  // Keep words out of the rows the menu bar and the Dock cover.
+  const ins = (LTW.screen && LTW.screen.insets) || {}, rTop = 1 + Math.ceil(((ins.top || 0) * dpr) / ch), rBot = 1 + Math.ceil(((ins.bottom || 0) * dpr) / ch);
+  if (rows - rTop - rBot < 1) return;
+  const r = rTop + ((Math.random() * (rows - rTop - rBot)) | 0);
   const c = 1 + ((Math.random() * (cols - w.length - 2)) | 0);
   overlays.push({ r, c, w, t0: t, dur: 3.5 + Math.random() * 2.5 });
 }

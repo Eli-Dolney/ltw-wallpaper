@@ -8,7 +8,8 @@
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg, #000); }
   canvas.full { position: absolute; inset: 0; width: 100%; height: 100%; }
   #stage { position: absolute; inset: 0; }
-  .hand { position: absolute; top: 50%; height: var(--hand-h, 42vh); will-change: transform; transform: translate(0, -50%); }
+  /* Centered in the area between the menu bar and the Dock, not the raw screen. */
+  .hand { position: absolute; top: calc(50% + (var(--safe-top, 0px) - var(--safe-bottom, 0px)) / 2); height: var(--hand-h, 42vh); will-change: transform; transform: translate(0, -50%); }
   .hand.left { right: 50%; }
   .hand.right { left: 50%; }
   /* the wrapper is padded so the glow is not clipped by the mask below */
@@ -23,7 +24,7 @@
   .sway .hand.right .inner { animation: swayr 11s ease-in-out infinite; }
   @keyframes swayl { 0%, 100% { transform: translate(0, 0) rotate(0); } 50% { transform: translate(4px, -5px) rotate(0.8deg); } }
   @keyframes swayr { 0%, 100% { transform: translate(0, 0) rotate(0); } 50% { transform: translate(-4px, 4px) rotate(-0.8deg); } }
-  #gap { position: absolute; left: 50%; top: 50%; width: var(--gap-w, 22vw); height: var(--gap-h, 50vh);
+  #gap { position: absolute; left: 50%; top: calc(50% + (var(--safe-top, 0px) - var(--safe-bottom, 0px)) / 2); width: var(--gap-w, 22vw); height: var(--gap-h, 50vh);
          transform: translate(-50%, calc(-50% + var(--gap-shift, 0vh))); transition: opacity 0.4s; }
   .item { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
           opacity: 0; transition: opacity 1.6s ease; }

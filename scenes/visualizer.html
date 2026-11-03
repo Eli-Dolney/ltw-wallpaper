@@ -89,7 +89,9 @@ LTWLoop(() => CONFIG.fps, (now) => {
     ctx.lineWidth = 2 * dpr; ctx.strokeStyle = `rgba(${palette(0)},0.5)`;
     ctx.beginPath(); ctx.arc(cx, cy, r0 * 0.92, 0, Math.PI * 2); ctx.stroke();
   } else {
-    const baseY = CONFIG.position === 'center' ? H / 2 : H * 0.92, maxH = H * (CONFIG.position === 'center' ? 0.42 : 0.84) * CONFIG.height;
+    // Keep the bars between the menu bar and the Dock (LTW.screen.insets), not behind them.
+    const ins = LTW.screen.insets || {}, st = (ins.top || 0) * dpr, sb = (ins.bottom || 0) * dpr, SH = Math.max(1, H - st - sb);
+    const baseY = CONFIG.position === 'center' ? st + SH / 2 : H - sb - SH * 0.06, maxH = SH * (CONFIG.position === 'center' ? 0.42 : 0.84) * CONFIG.height;
     const slot = W / n, bw = slot * CONFIG.barWidth, mirror = CONFIG.mirror && CONFIG.position === 'center';
     if (CONFIG.mode === 'wave') {
       ctx.lineWidth = 3 * dpr; ctx.lineJoin = 'round';

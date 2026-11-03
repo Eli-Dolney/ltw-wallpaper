@@ -6,6 +6,19 @@
   L.settings = L.settings || {};
   L.runtime = Object.assign({ paused: false, maxFps: 0 }, L.runtime || {});
 
+  // Safe area: the strips the menu bar (top) and the Dock (bottom, or a side) cover. The app fills
+  // LTW.screen.insets; a plain browser has none. Exposed as CSS variables --safe-top/-bottom/-left/-right
+  // (px) so scenes can write `padding-top: calc(4vh + var(--safe-top, 0px))`, and as LTW.screen.insets.
+  L.screen = L.screen || { index: 0, count: 1, width: innerWidth, height: innerHeight, scale: devicePixelRatio || 1 };
+  L.screen.insets = Object.assign({ top: 0, bottom: 0, left: 0, right: 0 }, L.screen.insets || {});
+  function applyInsets() {
+    const st = document.documentElement.style, i = L.screen.insets;
+    st.setProperty('--safe-top', i.top + 'px'); st.setProperty('--safe-bottom', i.bottom + 'px');
+    st.setProperty('--safe-left', i.left + 'px'); st.setProperty('--safe-right', i.right + 'px');
+  }
+  applyInsets();
+  window.__ltwInsets = function (i) { Object.assign(L.screen.insets, i || {}); applyInsets(); dispatchEvent(new Event('ltw-insets')); };
+
   const getPath = (o, k) => k.split('.').reduce((a, p) => (a == null ? a : a[p]), o);
   const setPath = (o, k, v) => {
     const p = k.split('.'), last = p.pop(); let t = o;

@@ -18,7 +18,8 @@
   .scanlines #scan { display: block; }
 
   /* ---- layout ---- */
-  #dash { position: absolute; inset: 0; padding: var(--margin); box-sizing: border-box; display: flex;
+  #dash { position: absolute; inset: 0; box-sizing: border-box; display: flex;
+          padding: calc(var(--margin) + var(--safe-top, 0px)) calc(var(--margin) + var(--safe-right, 0px)) calc(var(--margin) + var(--safe-bottom, 0px)) calc(var(--margin) + var(--safe-left, 0px));
           font-size: calc(var(--scale) * var(--fit, 1) * min(1vw, 1.78vh)); font-variant-numeric: tabular-nums; --tw: 18em; --th: 12.5em; }
   .l-grid { align-items: center; justify-content: center; }
   .l-sidebar-left { align-items: flex-start; justify-content: flex-start; }
@@ -32,7 +33,7 @@
   .tiles { display: grid; gap: 1em; flex: none; }
   .l-grid .tiles { grid-template-columns: repeat(var(--cols), var(--tw)); grid-auto-rows: minmax(var(--th), auto); grid-auto-flow: dense; }
   .l-grid .tile.wide { grid-column: span 2; }
-  .l-sidebar-left, .l-sidebar-right { padding-top: calc(var(--margin) * 0.6); padding-bottom: calc(var(--margin) * 0.6); }
+  .l-sidebar-left, .l-sidebar-right { padding-top: calc(var(--margin) * 0.6 + var(--safe-top, 0px)); padding-bottom: calc(var(--margin) * 0.6 + var(--safe-bottom, 0px)); }
   .l-sidebar-left .tiles, .l-sidebar-right .tiles { grid-template-columns: var(--tw); gap: 0.45em; }
   .l-sidebar-left .tile, .l-sidebar-right .tile { padding: 0.7em 0.9em; gap: 0.4em; }
   .l-sidebar-left .cpu-top .ring, .l-sidebar-right .cpu-top .ring { width: 5.4em; height: 5.4em; }

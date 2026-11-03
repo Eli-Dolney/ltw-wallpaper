@@ -98,6 +98,12 @@ to the menu bar icon (CPU, GPU, both, memory, battery with time left, watts, dow
 upload, disk, load or battery temperature). `./ltw stats` prints the same report in the terminal
 (`--json` for scripts), and the **monitor** scene puts it all on the wallpaper.
 
+The tint is taken from a still of the scene. Wherever macOS shows that still next to the moving
+picture (the menu bar on older releases, Mission Control, Show Desktop) a frozen frame looks odd, so
+by default it is blurred (Customize → App → Menu bar tint → *Blur*, 0–40) into a soft band of the
+scene's colors; *Darken* dims it on top. The lock-screen frame is never blurred. Set *Refresh every*
+to re-take it on a schedule for scenes that change color over time.
+
 **Dock** edits the macOS Dock's own preferences: icon size, magnification, position, auto-hide with
 show delay and slide time, minimize effect, minimize into app icon, recent apps, only running apps,
 dim hidden apps, running dots, launch bounce, scroll-to-show-windows, single-app mode, and buttons to
@@ -252,8 +258,14 @@ LTW.setup(CONFIG, SCHEMA, { rebuild: () => build(), change(key, value) { /* opti
 - Field types: `color`, `colors` (list), `range` (`min`/`max`/`step`), `toggle`, `select` (`options`),
   `text`, `list` (textarea, one item per line), `json`. Add `rebuild: true` to a field when changing it
   needs your `rebuild` hook; otherwise the value is simply updated in `CONFIG` and `change(key, value)` is called.
-- `window.LTW` also carries `screen` (`index`, `count`, `width`, `height`, `scale`), `images`
+- `window.LTW` also carries `screen` (`index`, `count`, `width`, `height`, `scale`, `insets`), `images`
   (files in `scenes/images/`), and `scenesPath`.
+- **Safe area**: the menu bar (and notch) cover the top of the wallpaper and the Dock the bottom (or a
+  side). `LTW.screen.insets` has `top`, `bottom`, `left`, `right` in points, and `_ltw.js` sets the CSS
+  variables `--safe-top`, `--safe-bottom`, `--safe-left`, `--safe-right`, so anything that must stay
+  readable pads with them: `padding-top: calc(4vh + var(--safe-top, 0px))`, or in a canvas
+  `H - insets.bottom * dpr`. Backgrounds should still run edge to edge. The clock, monitor, hands,
+  visualizer and glyphs scenes do this; in a browser the insets are 0.
 - **Mouse**: put `pointer: true` on the `SCHEMA` and the app pushes the pointer at ~30 Hz; read
   `LTW.pointer.x` / `.y` (−1…1, y up). Mouse events never reach the page itself. In a browser the real
   mouse is used, so previews work too.
