@@ -23,9 +23,13 @@ keyUsage = critical, digitalSignature
 extendedKeyUsage = critical, codeSigning
 basicConstraints = critical, CA:false
 EOF
-openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -config "$TMP/cert.cnf" \
+# Always the system LibreSSL: Homebrew's OpenSSL 3 writes a PKCS12 (AES + SHA-256 MAC) that the macOS
+# keychain cannot import ("MAC verification failed"). The explicit legacy algorithms keep it readable.
+OPENSSL=/usr/bin/openssl
+$OPENSSL req -x509 -newkey rsa:2048 -nodes -days 3650 -config "$TMP/cert.cnf" \
   -keyout "$TMP/key.pem" -out "$TMP/cert.pem" >/dev/null 2>&1
-openssl pkcs12 -export -inkey "$TMP/key.pem" -in "$TMP/cert.pem" -name "$NAME" \
+$OPENSSL pkcs12 -export -inkey "$TMP/key.pem" -in "$TMP/cert.pem" -name "$NAME" \
+  -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 \
   -out "$TMP/id.p12" -passout pass:ltw >/dev/null 2>&1
 KC="$HOME/Library/Keychains/login.keychain-db"
 security import "$TMP/id.p12" -k "$KC" -P ltw -T /usr/bin/codesign -T /usr/bin/security >/dev/null
