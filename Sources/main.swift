@@ -72,7 +72,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
     let stats = SystemStats()
     let mixer = AudioMixer()
     let levels = AudioLevels()
-    var sceneWants = (pointer: false, audio: false)   // declared by the current scene's SCHEMA
+    var sceneWants = (pointer: false, audio: false, stats: false)   // declared by the current scene's SCHEMA
+    var appIcons: [String: String] = [:]   // bundle id → PNG data URL, for the Customize panel
     var pointerTimer: Timer?
     var lastPointer: [Int: (Double, Double)] = [:]
     var statsTimer: Timer?
@@ -131,7 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
         applyKeepAwake()
         mixer.onChange = { [weak self] in self?.pushMixer() }
         mixer.refresh()
-        statsTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.statsTick() }
+        restartStatsTimer()
         restartRotateTimer()
         applyHotkeys()
     }
@@ -211,45 +212,96 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
             }
             let ok = self.windowManager.apply(layout, to: target)
             log.notice("wheel: \(layout.rawValue, privacy: .public) → \(target?.app.localizedName ?? "none", privacy: .public) \(ok ? "ok" : "failed", privacy: .public)")
+            if !ok {
+                Toast.show(WindowManager.trusted ? (target == nil ? "No window to move" : "\(target!.app.localizedName ?? "That app") wouldn't move")
+                           : "Allow Accessibility for Ltw Wallpaper first", symbol: "exclamationmark.triangle", accent: self.wheel.look.accent)
+            }
         }
     }
 
-    /// ⌃⌥Tab: running apps (or their windows) around the cursor, most recent first; the hub goes back
-    /// to the previous app, like ⌘Tab.
+    /// ⌃⌥Tab: pinned apps, then running apps (or their windows) around the cursor, most recent first; the
+    /// hub goes back to the previous app, like ⌘Tab.
     func showSwitcher(sticky: Bool) {
         applyWheelLook()
+        let cfg = settings.switcherConfig
         let windowsMode = settings.string("switcherMode") == "windows"
         let maxItems = max(3, min(12, Int(settings.double("switcherMax"))))
         if windowsMode, !WindowManager.trusted { WindowManager.requestTrust() }
-        let all = windowManager.switchItems(windows: windowsMode, max: maxItems + 1)
         let current = windowManager.userApp()
-        // The app you are in is the hub's "previous app" target only in apps mode; its wedge is dropped
-        // so the ring holds the places you can go to.
-        var list = all
-        var hub: WheelItem? = nil
-        if !windowsMode, let cur = current, let i = list.firstIndex(where: { $0.app.processIdentifier == cur.processIdentifier }) {
-            list.remove(at: i)
+        let list = windowManager.switchItems(windows: windowsMode, max: maxItems, config: cfg, current: current)
+        let prev = windowManager.previousApp(current: current, config: cfg)
+        guard !list.isEmpty || prev != nil else {
+            Toast.show("Nothing to switch to", symbol: "circle.grid.3x3", accent: wheel.look.accent)
+            return
         }
-        list = Array(list.prefix(maxItems))
-        if let prev = list.first {
-            hub = WheelItem(label: prev.title, icon: prev.app.icon, subtitle: windowsMode ? (prev.app.localizedName ?? "") : "previous")
+        let hub = prev.map { WheelItem(label: $0.title, icon: $0.icon, subtitle: "previous") }
+        let items = list.map { it -> WheelItem in
+            var w = WheelItem(label: windowsMode && it.window != nil ? (it.app?.localizedName ?? it.title) : it.title, icon: it.icon,
+                              subtitle: windowsMode && it.window != nil ? it.title : (it.isRunning ? "" : "launch"))
+            w.pinned = it.isPinned; w.current = it.isCurrent; w.dimmed = !it.isRunning
+            return w
         }
-        guard !list.isEmpty else { return }
-        let items = list.map { WheelItem(label: windowsMode ? ($0.app.localizedName ?? "") : $0.title, icon: $0.app.icon,
-                                         subtitle: windowsMode ? $0.title : "") }
-        log.notice("switcher: shown (\(sticky ? "sticky" : "hold", privacy: .public)) \(list.count) items")
+        log.notice("switcher: shown (\(sticky ? "sticky" : "hold", privacy: .public)) \(list.count) items, \(cfg.pinned.count) pinned")
         wheel.show(items: items, hub: hub, hubIcon: current?.icon, hubTitle: current?.localizedName ?? "Apps",
                    trusted: !windowsMode || WindowManager.trusted, sticky: sticky) { [weak self] pick in
             guard let self = self else { return }
             let item: WindowManager.SwitchItem
             switch pick {
-            case .hub: item = list[0]
+            case .hub: guard let p = prev else { return }; item = p
             case .wedge(let i): item = list[i]
             case .none: return
             }
-            log.notice("switcher: → \(item.title, privacy: .public)")
+            log.notice("switcher: → \(item.title, privacy: .public)\(item.isRunning ? "" : " (launch)", privacy: .public)")
+            if !item.isRunning { Toast.show("Opening \(item.title)…", symbol: "arrow.up.forward.app", accent: self.wheel.look.accent) }
             self.windowManager.activate(item)
         }
+    }
+
+    /// Window → "Pin <app> to App Wheel": toggles the app the user is working in.
+    @objc func togglePinCurrent() {
+        guard let app = windowManager.userApp() else { return }
+        let cfg = settings.switcherConfig
+        let pinned = cfg.pinned.contains { WindowManager.matches($0, bundle: app.bundleIdentifier, name: app.localizedName) }
+        setAppOnWheel(app.bundleIdentifier ?? app.localizedName ?? "", list: "switcherPinned", on: !pinned)
+    }
+
+    @objc func checkForUpdates() {
+        Toast.show("Checking for updates…", symbol: "arrow.triangle.2.circlepath")
+        Updater.latest { [weak self] result in
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            switch result {
+            case .failure(let err):
+                alert.messageText = "Couldn't check for updates"
+                alert.informativeText = err.localizedDescription
+            case .success(let latest):
+                if Updater.isNewer(latest, than: Updater.installedVersion) {
+                    alert.messageText = "Version \(latest) is available"
+                    alert.informativeText = "You have \(Updater.installedVersion). Pull the repository and run ./run.sh, or download it from GitHub."
+                    alert.addButton(withTitle: "Open GitHub")
+                    alert.addButton(withTitle: "Later")
+                } else {
+                    alert.messageText = "You're up to date"
+                    alert.informativeText = "Ltw Wallpaper \(Updater.installedVersion) is the newest version."
+                }
+            }
+            NSApp.activate(ignoringOtherApps: true)
+            if alert.runModal() == .alertFirstButtonReturn, alert.buttons.count > 1 { NSWorkspace.shared.open(Updater.page) }
+            _ = self
+        }
+    }
+
+    @objc func copyDiagnostics() {
+        stats.sample()
+        let extra: [String: String] = [
+            "Audio mixer": mixer.state()["error"] as? String ?? "ok",
+            "Stats": stats.report.replacingOccurrences(of: "\n", with: "\n       "),
+        ]
+        let text = Diagnostics.report(scene: current?.name ?? "none", settings: settings, trusted: WindowManager.trusted,
+                                      displays: NSScreen.screens.count, extra: extra)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        Toast.show("Diagnostics copied to the clipboard", symbol: "doc.on.clipboard")
     }
 
     @objc func wheelFromMenu() { showWheel(sticky: true) }
@@ -357,15 +409,91 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
 
     // MARK: System monitor + mixer plumbing
 
+    func restartStatsTimer() {
+        statsTimer?.invalidate()
+        let every = max(1, min(60, settings.double("statsInterval")))
+        statsTimer = Timer.scheduledTimer(withTimeInterval: every, repeats: true) { [weak self] _ in self?.statsTick() }
+        statsTimer?.tolerance = every * 0.1
+    }
+
+    var panelShowsStats: Bool { panel?.window?.isVisible == true && defaults.string(forKey: "panelTab") == "stats" }
+
     func statsTick() {
+        let sceneVisible = sceneWants.stats && !power.forcedPause && windows.contains { $0.occlusionState.contains(.visible) }
+        stats.wantsDetail = (panelShowsStats && settings.bool("statsTop")) || sceneVisible
         stats.sample()
         let lines = stats.menuLines
         for (i, item) in statItems.enumerated() where i < lines.count { item.title = lines[i] }
         if settings.string("menuReadout") != "none" { updateStatusIcon() }
+        var js: String?
         if panel?.window?.isVisible == true {
-            panel?.send("window.__stats && __stats(\(json(stats.last.json)))")
+            js = json(stats.last.json)
+            panel?.send("window.__stats && __stats(\(js!))")
             mixer.refresh()
         }
+        if sceneVisible {
+            let code = "window.__ltwStats && __ltwStats(\(js ?? json(stats.last.json)))"
+            for w in windows where w.occlusionState.contains(.visible) { w.webView.evaluateJavaScript(code, completionHandler: nil) }
+        }
+    }
+
+    /// Running apps plus pinned ones that are not running, for the "Apps on the wheel" picker.
+    func appsForPanel() -> [[String: Any]] {
+        let cfg = settings.switcherConfig
+        var out: [[String: Any]] = []
+        var seen = Set<String>()
+        func add(_ it: WindowManager.SwitchItem) {
+            let key = it.bundle.isEmpty ? it.title : it.bundle
+            guard !seen.contains(key.lowercased()) else { return }
+            seen.insert(key.lowercased())
+            if appIcons[key] == nil, let img = it.icon { appIcons[key] = img.pngDataURL(size: 32) }
+            out.append(["name": it.title, "bundle": it.bundle, "icon": appIcons[key] ?? NSNull(), "running": it.isRunning,
+                        "pinned": cfg.pinned.contains { WindowManager.matches($0, bundle: it.bundle, name: it.title) },
+                        "hidden": cfg.hidden.contains { WindowManager.matches($0, bundle: it.bundle, name: it.title) }])
+        }
+        for e in cfg.pinned { if let it = windowManager.resolve(e) { add(it) } }
+        for a in windowManager.runningApps() {
+            add(WindowManager.SwitchItem(app: a, url: a.bundleURL, window: nil, title: a.localizedName ?? "App", icon: a.icon, bundle: a.bundleIdentifier ?? ""))
+        }
+        return out
+    }
+
+    /// Pin/unpin/hide/show an app on the wheel by bundle id or name; `list` is "switcherPinned" or "switcherHidden".
+    func setAppOnWheel(_ entry: String, list: String, on: Bool) {
+        // Store the bundle id when we can resolve it (stable across renames) but show the name.
+        let it = windowManager.resolve(entry)
+        let stored = it?.bundle.isEmpty == false ? it!.bundle : entry
+        var l = settings.list(list)
+        l.removeAll { WindowManager.matches($0, bundle: it?.bundle, name: it?.title) || $0.caseInsensitiveCompare(entry) == .orderedSame }
+        if on { l.append(stored) }
+        settings.set(list, l)
+        if on, list == "switcherPinned" { settings.toggle("switcherHidden", stored, on: false) }
+        if on, list == "switcherHidden" { settings.toggle("switcherPinned", stored, on: false) }
+        let name = it?.title ?? entry
+        let verb = list == "switcherPinned" ? (on ? "Pinned" : "Unpinned") : (on ? "Hidden from the wheel:" : "Back on the wheel:")
+        Toast.show("\(verb) \(name)", symbol: list == "switcherPinned" ? (on ? "pin.fill" : "pin.slash") : (on ? "eye.slash" : "eye"), accent: wheel.look.accent)
+        log.notice("switcher: \(verb, privacy: .public) \(name, privacy: .public)")
+        panelLoad()
+    }
+
+    /// Writes a JSON (or text) report where `./ltw stats` / `./ltw apps list` can pick it up.
+    func dump(_ what: String, to path: String, asJSON: Bool) {
+        var text: String
+        switch what {
+        case "apps":
+            let cfg = settings.switcherConfig
+            let items = windowManager.switchItems(windows: false, max: 64, config: cfg, current: nil)
+            if asJSON { text = json(items.map { ["name": $0.title, "bundle": $0.bundle, "running": $0.isRunning, "pinned": $0.isPinned] as [String: Any] }) }
+            else {
+                text = items.map { ($0.isPinned ? "📌 " : "   ") + $0.title + ($0.isRunning ? "" : "  (not running)") + "   " + $0.bundle }.joined(separator: "\n")
+                if !cfg.hidden.isEmpty { text += "\n   hidden: " + cfg.hidden.joined(separator: ", ") }
+            }
+        default:
+            stats.wantsDetail = true
+            stats.sample()
+            text = asJSON ? json(stats.last.json) : stats.report
+        }
+        try? (text + "\n").write(to: URL(fileURLWithPath: path), atomically: true, encoding: .utf8)
     }
 
     func pushMixer() {
@@ -551,14 +679,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         if let w = windows.first(where: { $0.webView === webView }) { pushRuntime(to: w) }
         if webView === windows.first?.webView {
-            webView.evaluateJavaScript("JSON.stringify(window.LTW && LTW.schema ? {p: !!LTW.schema.pointer, a: !!LTW.schema.audio} : null)") { [weak self] r, _ in
+            webView.evaluateJavaScript("JSON.stringify(window.LTW && LTW.schema ? {p: !!LTW.schema.pointer, a: !!LTW.schema.audio, s: !!LTW.schema.stats} : null)") { [weak self] r, _ in
                 guard let self = self else { return }
-                var wants = (pointer: false, audio: false)
+                var wants = (pointer: false, audio: false, stats: false)
                 if let str = r as? String, let d = try? JSONSerialization.jsonObject(with: Data(str.utf8)) as? [String: Any] {
-                    wants = ((d["p"] as? Bool) ?? false, (d["a"] as? Bool) ?? false)
+                    wants = ((d["p"] as? Bool) ?? false, (d["a"] as? Bool) ?? false, (d["s"] as? Bool) ?? false)
                 }
                 self.sceneWants = wants
                 self.updateFeeds()
+                if wants.stats { self.statsTick() }
             }
         }
         if webView === windows.first?.webView, panel?.window?.isVisible == true {
@@ -636,7 +765,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
         case "scene":
             if let n = body["name"] as? String, let s = scenes.first(where: { $0.name == n }) { load(s) }
         case "tab":
-            if let n = body["name"] as? String { defaults.set(n, forKey: "panelTab") }
+            if let n = body["name"] as? String { defaults.set(n, forKey: "panelTab"); if n == "stats" { statsTick() } }
         case "close":
             panel?.window?.performClose(nil)
         case "appset":
@@ -647,6 +776,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
             panelLoad()
         case "pickfile":
             if let key = body["key"] as? String { pickFile(forKey: key, app: body["ctx"] as? String == "appset") }
+        case "pinapp":
+            if let entry = body["entry"] as? String, let list = body["list"] as? String, ["switcherPinned", "switcherHidden"].contains(list) {
+                setAppOnWheel(entry, list: list, on: (body["on"] as? NSNumber)?.boolValue ?? true)
+            }
+        case "pickapp":
+            pickApp()
         case "dockset":
             if let key = body["key"] as? String, let value = body["value"] { dock.set(key, value) }
         case "dockreset":
@@ -705,6 +840,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
                 "dock": ["schema": DockSettings.schema, "defaults": DockSettings.defaults, "config": self.dock.config],
                 "mixer": self.mixer.state(),
                 "stats": self.stats.last.json,
+                "apps": self.appsForPanel(),
                 "tab": self.defaults.string(forKey: "panelTab") ?? "scene",
                 "sceneList": self.scenes.map { s -> [String: Any] in ["name": s.name, "kind": s.kind.rawValue, "thumb": self.thumbURL(s.name).map { $0 as Any } ?? NSNull()] },
             ]
@@ -786,6 +922,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
             restartRotateTimer()
         case "hotkeys", "wheel", "switcher":
             applyHotkeys()
+        case "statsInterval":
+            restartStatsTimer()
+        case "statsInMenu", "statsTop", "switcherPinned", "switcherHidden":
+            break
         case "batterySaver":
             power.saver = PowerMonitor.Saver(rawValue: settings.string("batterySaver")) ?? .auto
         case "keepAwake":
@@ -913,8 +1053,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
             item.representedObject = layout.rawValue
             win.addItem(item)
         }
+        win.addItem(.separator())
+        if let app = windowManager.userApp() {
+            let pinned = settings.switcherConfig.pinned.contains { WindowManager.matches($0, bundle: app.bundleIdentifier, name: app.localizedName) }
+            let pin = add(win, pinned ? "Unpin \(app.localizedName ?? "App") from App Wheel" : "Pin \(app.localizedName ?? "App") to App Wheel",
+                          #selector(togglePinCurrent), "", pinned ? "pin.slash" : "pin")
+            pin.toolTip = "Pinned apps keep a fixed place on the ⌃⌥Tab wheel, running or not."
+        }
         if !WindowManager.trusted {
-            win.addItem(.separator())
             add(win, "Allow Window Management…", #selector(allowWindowManagement), "", "lock.open")
         }
         window.submenu = win
@@ -932,6 +1078,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
         adv.addItem(.separator())
         add(adv, "Export Settings…", #selector(exportSettings), "", "square.and.arrow.up")
         add(adv, "Import Settings…", #selector(importSettings), "", "square.and.arrow.down")
+        adv.addItem(.separator())
+        add(adv, "Check for Updates…", #selector(checkForUpdates), "", "arrow.triangle.2.circlepath")
+        add(adv, "Copy Diagnostics", #selector(copyDiagnostics), "", "doc.on.clipboard")
         advanced.submenu = adv
         menu.addItem(advanced)
         menu.addItem(.separator())
@@ -1012,7 +1161,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
         case "wheel":
             showWheel(sticky: true)
         case "apps":
-            showSwitcher(sticky: true)
+            let parts = url.pathComponents.dropFirst()
+            let verb = parts.first ?? "", name = parts.dropFirst().joined(separator: "/")
+            switch verb {
+            case "pin": setAppOnWheel(name, list: "switcherPinned", on: true)
+            case "unpin": setAppOnWheel(name, list: "switcherPinned", on: false)
+            case "hide": setAppOnWheel(name, list: "switcherHidden", on: true)
+            case "show", "unhide": setAppOnWheel(name, list: "switcherHidden", on: false)
+            case "list": if let p = arg("path") { dump("apps", to: p, asJSON: arg("json") == "1") }
+            default: showSwitcher(sticky: true)
+            }
+        case "stats":
+            if let p = arg("path") { dump("stats", to: p, asJSON: arg("json") == "1") }
+        case "update":
+            checkForUpdates()
         case "window":
             let name = url.pathComponents.dropFirst().first ?? ""
             if let layout = WindowLayout(rawValue: name) { applyWheelLook(); windowManager.apply(layout) }
@@ -1052,6 +1214,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
     var menuBarMode: String { settings.string("menuBarMode") }
 
     @objc func syncNow() { if menuBarMode != "off" { syncSystemWallpaper() } }
+
+    /// "Add app…" in the Apps on the wheel picker: choose an .app bundle to pin.
+    func pickApp() {
+        let open = NSOpenPanel()
+        open.allowedContentTypes = [.applicationBundle]
+        open.allowsMultipleSelection = true
+        open.directoryURL = URL(fileURLWithPath: "/Applications")
+        open.level = .floating
+        open.message = "Choose apps to pin to the App Wheel"
+        NSApp.activate(ignoringOtherApps: true)
+        guard open.runModal() == .OK else { return }
+        for url in open.urls {
+            let id = Bundle(url: url)?.bundleIdentifier ?? url.deletingPathExtension().lastPathComponent
+            setAppOnWheel(id, list: "switcherPinned", on: true)
+        }
+    }
 
     func scheduleWallpaperSync(after delay: TimeInterval = 2.5) {
         syncWork?.cancel()

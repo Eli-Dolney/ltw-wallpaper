@@ -16,12 +16,24 @@
 #   ./ltw snapshot [out.png]  save the current frame (default: ~/Pictures/Ltw Wallpaper)
 #   ./ltw wheel               open the window wheel at the cursor (⌃⌥W held does the same)
 #   ./ltw apps                open the app wheel at the cursor (⌃⌥Tab held does the same)
+#   ./ltw apps pin <app>      pin an app to the wheel (fixed slot; launches it when not running); unpin removes
+#   ./ltw apps hide <app>     keep an app off the wheel; show puts it back      ./ltw apps list  prints the wheel
 #   ./ltw window <layout>     snap the front window: left right top bottom maximize center nextDisplay minimize restore
+#   ./ltw stats [--json]      print CPU, GPU, memory, battery, network, disk and top processes
+#   ./ltw update              check GitHub for a newer version
 cd "$(dirname "$0")"
 # Prefer the installed copy (./run.sh puts it there) so only one app ever runs.
 APP=/Applications/LtwWallpaper.app
 if [ ! -d "$APP" ]; then APP="$PWD/build/LtwWallpaper.app"; [ -d "$APP" ] || ./build.sh >/dev/null; fi
 enc() { python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"; }
+# Ask the app to write a report to a temp file and print it (the app can only talk back through files).
+dump() {
+  local f; f="$(mktemp -t ltw)"; rm -f "$f"
+  local j=0; [ "$2" = "--json" ] && j=1
+  open -a "$APP" "ltw://$1?path=$(enc "$f")&json=$j" || return 1
+  for _ in $(seq 1 60); do [ -s "$f" ] && break; sleep 0.1; done
+  if [ -s "$f" ]; then cat "$f"; rm -f "$f"; else echo "No answer from the app (is it running?)"; return 1; fi
+}
 case "$1" in
   scene)    open -a "$APP" "ltw://scene/$(enc "$2")" ;;
   snapshot) out="${2:-$HOME/Pictures/Ltw Wallpaper/LtwWallpaper $(date +%H.%M.%S).png}"; mkdir -p "$(dirname "$out")"; [[ "$out" = /* ]] || out="$PWD/$out"; open -a "$APP" "ltw://snapshot?path=$(enc "$out")" ;;
@@ -32,7 +44,16 @@ case "$1" in
   awake)    v=true; [ "$2" = off ] && v=false; open -a "$APP" "ltw://appset?key=keepAwake&value=$v" ;;
   vol)      open -a "$APP" "ltw://vol?key=$(enc "$2")&value=$(enc "$3")" ;;
   window)   open -a "$APP" "ltw://window/$(enc "$2")" ;;
-  next|sync|customize|reset|pause|wheel|apps) open -a "$APP" "ltw://$1" ;;
+  apps)
+    case "$2" in
+      pin|unpin|hide|show) open -a "$APP" "ltw://apps/$2/$(enc "$3")" ;;
+      list) dump apps/list ;;
+      "") open -a "$APP" "ltw://apps" ;;
+      *) echo "usage: ./ltw apps [pin|unpin|hide|show <app> | list]"; exit 1 ;;
+    esac ;;
+  stats)    dump stats "$2" ;;
+  update)   open -a "$APP" "ltw://update" ;;
+  next|sync|customize|reset|pause|wheel) open -a "$APP" "ltw://$1" ;;
   version)  defaults read "$APP/Contents/Info" CFBundleShortVersionString ;;
-  *) sed -n '2,20p' "$0"; exit 1 ;;
+  *) sed -n '2,25p' "$0"; exit 1 ;;
 esac

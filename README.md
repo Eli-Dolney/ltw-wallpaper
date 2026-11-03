@@ -86,9 +86,15 @@ scales it and plays it through a private mixer device on your output. Apps at 10
 The first adjustment asks for the **System Audio Recording** permission; nothing is recorded. Levels
 are remembered per app. Shell: `./ltw vol <app> <percent>` (bundle id or app name).
 
-**Stats** shows CPU, memory, battery and network with sparklines, updated every 2 s. The same
-numbers can sit at the top of the menu (Customize → App → Monitor) and a compact readout (CPU %,
-memory, battery or download speed) can follow the menu bar icon.
+**Stats** is a system monitor: CPU with history, per-core bars, user/system split and load average;
+GPU utilization; memory as app / wired / compressed / cached with swap; battery with time left, power
+draw in watts, health, cycle count and temperature; network down/up with the active interface and
+totals since boot; disk read/write and free space; uptime, process count, thermal state, and what the
+wallpaper itself costs; plus the top processes by CPU. Customize → App → **Monitor** sets the update
+interval (1–10 s), whether three summary lines sit at the top of the menu, and a compact readout next
+to the menu bar icon (CPU, GPU, both, memory, battery with time left, watts, download, download +
+upload, disk, load or battery temperature). `./ltw stats` prints the same report in the terminal
+(`--json` for scripts), and the **monitor** scene puts it all on the wallpaper.
 
 **Dock** edits the macOS Dock's own preferences: icon size, magnification, position, auto-hide with
 show delay and slide time, minimize effect, minimize into app icon, recent apps, only running apps,
@@ -104,7 +110,10 @@ Animation (⌘P, freezes every scene), Keep Awake, a **System** submenu (Hide De
 Dark Mode, Start Screen Saver, Sleep Display), a **Window** submenu (the wheel and its layouts as plain
 menu items), an **Advanced** submenu (… plus Export / Import Settings as
 one JSON file, Reload Scenes, Open Scenes Folder, Open Current Scene in Browser, Refresh Menu Bar Tint,
-Restore Original Wallpaper), About, and Quit. The Customize window remembers its tab and closes with Esc
+Restore Original Wallpaper, **Check for Updates…** against GitHub, and **Copy Diagnostics**, which
+puts a short report — version, Mac, permissions, changed settings, current stats — on the clipboard
+for bug reports), About, and Quit. Short confirmations ("Pinned Safari", "Allow Accessibility for Ltw
+Wallpaper first") appear as a small HUD near the bottom of the screen and fade on their own. The Customize window remembers its tab and closes with Esc
 or ⌘W.
 
 ## Where scenes live
@@ -130,6 +139,10 @@ So the edit loop is: change a file in `scenes/`, then
 ./ltw reset              # delete the current scene's saved settings
 ./ltw snapshot [out.png] # save the current frame (default: ~/Pictures/Ltw Wallpaper)
 ./ltw sync               # re-sync the system wallpaper snapshot
+./ltw stats [--json]     # CPU, GPU, memory, battery, network, disk, top processes
+./ltw apps pin <app>     # shape the app wheel (pin / unpin / hide / show / list)
+./ltw window left        # snap the front window; ./ltw wheel and ./ltw apps open the wheels
+./ltw update             # check GitHub for a newer version
 ```
 
 It talks to the app through `ltw://` URLs, so Shortcuts, Raycast, cron, etc. can do the same:
@@ -171,6 +184,11 @@ Included:
   geometric mesh, ripple rings, or a solid color). Pick the font, size, weight, position on screen,
   12/24-hour, seconds, date format, a bottom note, the four-color background palette, speed and
   intensity, and how much to darken the background under the clock.
+- **monitor** – a live system dashboard on the wallpaper: CPU (ring, history, per-core bars, load),
+  GPU, memory (app / wired / compressed / cached, swap), network, disk, battery (time left, watts,
+  health, cycles, temperature), top processes and uptime, as glass, flat, outline or terminal tiles in
+  a grid, a sidebar, a slim bar along one edge or a corner cluster, over any `_bg.js` background.
+  Alert thresholds turn a tile red. The numbers come from the app every 1–10 s (Customize → App → Monitor).
 - **matrix** – the classic rain.
 - **slideshow** – crossfading Ken Burns slideshow of `scenes/images/`.
 - **Sample Photo.jpg** – a plain generated image, to show the image path works.
@@ -243,6 +261,15 @@ LTW.setup(CONFIG, SCHEMA, { rebuild: () => build(), change(key, value) { /* opti
   *Audio-reactive scenes* toggle is on (it needs the same “System Audio Recording” permission as the
   mixer). With no feed (browser preview, permission not granted, toggle off) a synthetic groove plays
   instead so the scene still moves.
+- **Stats**: put `stats: true` on the `SCHEMA` and the app pushes a system sample every 1–10 s while
+  the scene is visible; read `LTW.stats` or pass a `stats(sample)` hook to `LTW.setup`. The sample has
+  `cpu`, `cpuUser`, `cpuSystem`, `cores[]`, `loadAvg[3]`, `memUsed/Total/App/Wired/Compressed/Cached`,
+  `swapUsed/Total`, `battery`, `charging`, `pluggedIn`, `timeRemaining` (min), `cycles`, `health`,
+  `watts`, `batteryTemp`, `gpu`, `diskRead/Write` (B/s), `diskFree/Total`, `netIn/Out` (B/s),
+  `netTotalIn/Out`, `netInterface`, `thermal`, `uptime`, `processes`, `self` (`{cpu, mem}` of the
+  wallpaper) and `top` (`[{pid, name, cpu, mem}]`); fractions are 0…1 and sizes are bytes, with `null`
+  where the Mac has no such thing (no battery, no GPU counter). In a browser a demo sample is generated
+  every 2 s. `monitor.html` is the worked example.
 - `_gl.js` has a tiny helper for full-screen shader scenes (`GL(canvas, fragmentSource)` and the
   `LTWLoop(fps, fn)` frame gate) used by nebula, synthwave, rain and liquid.
 - `_bg.js` is the animated-background library behind the clock. Include `_ltw.js`, `_gl.js` and
@@ -284,11 +311,28 @@ the last snap), and `./ltw window left` etc. does it from the shell; `./ltw whee
 
 Hold **⌃⌥Tab** and the same wheel fills with your running apps, most recently used first, with their
 icons and names around the ring. Move toward one and let go to switch to it; the hub is the previous
-app, so a quick flick into the middle is ⌘Tab's "back to the last app". Tap ⌃⌥Tab to keep it open and
-click. Customize → App → **App wheel** switches between apps and individual windows (every window of
-every app, titles shown in the hub; needs Accessibility), sets how many slots the wheel has (3–12), and
-whether names are drawn around the ring. Hidden apps are unhidden and minimized windows restored when
-you pick them. `./ltw apps` opens it from the shell.
+app, so a quick flick into the middle is ⌘Tab's "back to the last app". Tap ⌃⌥Tab to keep it open,
+then click, or press **1–9** for a wedge, **0** for the hub, arrows / Tab to move the highlight and
+Return to pick. Customize → App → **App wheel** switches between apps and individual windows (every
+window of every app, titles shown in the hub; needs Accessibility), sets how many slots the wheel
+has (3–12), the order (most recent first or alphabetical), and whether names are drawn around the
+ring. Hidden apps are unhidden and minimized windows restored when you pick them.
+
+**Choosing the apps.** Customize → App → **Apps on the wheel** lists your running apps with two
+buttons each: 📌 pins the app, so it always has the same slot on the wheel (pins come first, in the
+order you pinned them) and is launched when it is not running; 👁 hides it so it never appears. "Pin
+another app…" picks any app from `/Applications`. Switch on *Only pinned apps* for a fixed launcher
+wheel of exactly the apps you chose. The pinned and hidden lists are also plain text fields (bundle
+ids or app names, one per line) you can reorder, and the **Window** submenu has "Pin *App* to App
+Wheel" for whatever you are using. From the shell:
+
+```bash
+./ltw apps pin Safari          # or a bundle id: ./ltw apps pin com.apple.Safari
+./ltw apps unpin Safari
+./ltw apps hide Music          # ./ltw apps show Music puts it back
+./ltw apps list                # what the wheel shows right now
+./ltw apps                     # open the wheel
+```
 
 Moving other apps' windows needs the **Accessibility** permission: the first use opens System
 Settings → Privacy & Security → Accessibility, where you switch on Ltw Wallpaper. Like the audio
@@ -327,7 +371,9 @@ the scene pauses, so the lock screen shows exactly what was on your desktop when
 `SettingsStore.swift` (per-scene JSON overrides, injected into `window.LTW.settings` before each load),
 `CustomizePanel.swift` (the Customize window, a `WKWebView` showing `scenes/_panel.html`, talking to
 the app through a `webkit.messageHandlers.ltw` channel), `PowerMonitor.swift` (sleep / lock / low
-power tracking; window occlusion is observed per window).
+power tracking; window occlusion is observed per window), `SystemStats.swift` (Mach host statistics,
+libproc, IOKit registry reads for GPU / disks / battery), `WindowManager.swift` and `RadialMenu.swift`
+(the wheels), `Toast.swift` (HUD, update check, diagnostics). See `CHANGELOG.md` for what changed when.
 
 ## License
 

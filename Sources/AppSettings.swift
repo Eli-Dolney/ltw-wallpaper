@@ -51,7 +51,13 @@ final class AppSettings {
         "switcherMode": "apps",
         "switcherMax": 8.0,
         "switcherLabels": true,
+        "switcherPinned": [String](),
+        "switcherHidden": [String](),
+        "switcherPinnedOnly": false,
+        "switcherSort": "recent",
         "statsInMenu": true,
+        "statsInterval": 2.0,
+        "statsTop": true,
         "loginItem": false,
         "dockIcon": false,
         "panelStyle": "translucent",
@@ -63,15 +69,16 @@ final class AppSettings {
         "panelAutoHide": false,
     ]
 
-    static let schema: [String: Any] = ["groups": [
-        ["label": "Menu bar icon", "fields": [
+    // One constant per group: a single literal this size is too much for the type checker.
+    private static let group1: [String: Any] = ["label": "Menu bar icon", "fields": [
             ["key": "menuIcon", "type": "select", "label": "Symbol", "options": symbols],
             ["key": "menuIconEmoji", "type": "text", "label": "Emoji or text instead", "placeholder": "e.g. ✨ (leave empty for the symbol)"],
             ["key": "menuIconImage", "type": "file", "label": "Custom image", "placeholder": "PNG with transparency"],
             ["key": "menuIconColor", "type": "toggle", "label": "Keep image colors", "showIf": ["key": "menuIconImage", "not": ""]],
             ["key": "menuShowScene", "type": "toggle", "label": "Show scene name"],
-        ]],
-        ["label": "Menu bar tint", "fields": [
+        ]]
+
+    private static let group2: [String: Any] = ["label": "Menu bar tint", "fields": [
             ["key": "menuBarMode", "type": "select", "label": "Tint from", "options": [
                 ["value": "match", "label": "Snapshot of the scene"],
                 ["value": "color", "label": "A solid color"],
@@ -82,37 +89,42 @@ final class AppSettings {
             ["key": "menuBarRefresh", "type": "range", "label": "Refresh every (s)", "min": 0, "max": 300, "step": 5, "showIf": ["key": "menuBarMode", "is": "match"]],
             ["key": "lockScreenFrame", "type": "toggle", "label": "Lock screen shows the last frame", "showIf": ["key": "menuBarMode", "is": "match"]],
             ["key": "_lock", "type": "note", "label": "macOS can only show a still picture on the lock screen. This grabs the frame on screen the moment you lock or the display sleeps.", "showIf": ["key": "lockScreenFrame", "is": true]],
-        ]],
-        ["label": "Power", "fields": [
+        ]]
+
+    private static let group3: [String: Any] = ["label": "Power", "fields": [
             ["key": "batterySaver", "type": "select", "label": "Battery saver", "options": [
                 ["value": "auto", "label": "Auto (follows Low Power Mode)"],
                 ["value": "on", "label": "On (15 fps cap)"],
                 ["value": "off", "label": "Off"],
             ]],
             ["key": "keepAwake", "type": "toggle", "label": "Keep Mac awake (caffeinate)"],
-        ]],
-        ["label": "Scenes", "fields": [
+        ]]
+
+    private static let group4: [String: Any] = ["label": "Scenes", "fields": [
             ["key": "rotateEvery", "type": "select", "label": "Change scene automatically", "options": [
                 ["value": 0, "label": "Never"], ["value": 15, "label": "Every 15 minutes"], ["value": 30, "label": "Every 30 minutes"],
                 ["value": 60, "label": "Every hour"], ["value": 180, "label": "Every 3 hours"], ["value": 1440, "label": "Every day"]]],
             ["key": "rotateShuffle", "type": "toggle", "label": "Shuffle", "showIf": ["key": "rotateEvery", "not": 0]],
             ["key": "audioReactive", "type": "toggle", "label": "Audio-reactive scenes listen to system sound"],
             ["key": "_audio", "type": "note", "label": "Visualizer, Warp, Liquid and Synthwave move to whatever is playing. Needs “System Audio Recording”; otherwise they run a demo groove.", "showIf": ["key": "audioReactive", "is": true]],
-        ]],
-        ["label": "Shortcuts", "fields": [
+        ]]
+
+    private static let group5: [String: Any] = ["label": "Shortcuts", "fields": [
             ["key": "hotkeys", "type": "toggle", "label": "Global shortcuts"],
             ["key": "_hk", "type": "note", "label": "⌃⌥N next scene · ⌃⌥P pause animation · ⌃⌥K keep awake · ⌃⌥M mixer · ⌃⌥C customize · ⌃⌥W window wheel · ⌃⌥Tab app wheel",
              "showIf": ["key": "hotkeys", "is": true]],
-        ]],
-        ["label": "Window wheel", "fields": [
+        ]]
+
+    private static let group6: [String: Any] = ["label": "Window wheel", "fields": [
             ["key": "wheel", "type": "toggle", "label": "Window wheel (⌃⌥W)"],
             ["key": "_wheel", "type": "note", "label": "Hold ⌃⌥W, move the mouse toward a layout, let go: the front window snaps there. Tap ⌃⌥W to keep the wheel open and click. Needs Accessibility access once.",
              "showIf": ["key": "wheel", "is": true]],
             ["key": "wheelSize", "type": "range", "label": "Size", "min": 100, "max": 260, "step": 10, "showIf": ["key": "wheel", "is": true]],
             ["key": "wheelDim", "type": "range", "label": "Dim the screen behind", "min": 0, "max": 0.6, "step": 0.05, "showIf": ["key": "wheel", "is": true]],
             ["key": "wheelGap", "type": "range", "label": "Gap between windows (px)", "min": 0, "max": 40, "step": 2, "showIf": ["key": "wheel", "is": true]],
-        ]],
-        ["label": "App wheel", "fields": [
+        ]]
+
+    private static let group7: [String: Any] = ["label": "App wheel", "fields": [
             ["key": "switcher", "type": "toggle", "label": "App wheel (⌃⌥Tab)"],
             ["key": "_switcher", "type": "note", "label": "A radial ⌘Tab: hold ⌃⌥Tab, move toward an app, let go. The hub jumps back to the previous app. Tap to keep it open and click.",
              "showIf": ["key": "switcher", "is": true]],
@@ -121,17 +133,39 @@ final class AppSettings {
                 ["value": "windows", "label": "Windows (needs Accessibility)"],
             ], "showIf": ["key": "switcher", "is": true]],
             ["key": "switcherMax", "type": "range", "label": "Slots on the wheel", "min": 3, "max": 12, "step": 1, "showIf": ["key": "switcher", "is": true]],
+            ["key": "switcherSort", "type": "select", "label": "Order", "options": [
+                ["value": "recent", "label": "Most recent first"],
+                ["value": "name", "label": "Alphabetical"],
+            ], "showIf": ["key": "switcher", "is": true]],
             ["key": "switcherLabels", "type": "toggle", "label": "Names around the ring", "showIf": ["key": "switcher", "is": true]],
             ["key": "_wheelShared", "type": "note", "label": "Size, dim and the accent color are shared with the window wheel above.", "showIf": ["key": "switcher", "is": true]],
-        ]],
-        ["label": "Monitor", "fields": [
+        ]]
+
+    private static let group8: [String: Any] = ["label": "Apps on the wheel", "fields": [
+            ["key": "_pins", "type": "note", "label": "Pin an app and it keeps its place on the wheel, running or not (picking it launches it). Hide an app and it never shows. Pins come first, in this order."],
+            ["key": "switcherApps", "type": "apps", "label": "Apps"],
+            ["key": "switcherPinnedOnly", "type": "toggle", "label": "Only pinned apps (a fixed launcher wheel)"],
+            ["key": "switcherPinned", "type": "list", "label": "Pinned (bundle id or name, one per line, wheel order)", "rows": 3],
+            ["key": "switcherHidden", "type": "list", "label": "Hidden", "rows": 2],
+            ["key": "_pinsCli", "type": "note", "label": "Shell: ./ltw apps pin Safari · ./ltw apps unpin Safari · ./ltw apps hide Music · ./ltw apps show Music · ./ltw apps list"],
+        ]]
+
+    private static let group9: [String: Any] = ["label": "Monitor", "fields": [
             ["key": "statsInMenu", "type": "toggle", "label": "Stats at the top of the menu"],
             ["key": "menuReadout", "type": "select", "label": "Next to the menu bar icon", "options": [
-                ["value": "none", "label": "Nothing"], ["value": "cpu", "label": "CPU %"], ["value": "mem", "label": "Memory used"],
-                ["value": "cpu+mem", "label": "CPU + memory"], ["value": "battery", "label": "Battery %"], ["value": "net", "label": "Download speed"],
+                ["value": "none", "label": "Nothing"], ["value": "cpu", "label": "CPU %"], ["value": "gpu", "label": "GPU %"],
+                ["value": "cpu+gpu", "label": "CPU + GPU"], ["value": "mem", "label": "Memory used"], ["value": "cpu+mem", "label": "CPU + memory"],
+                ["value": "battery", "label": "Battery %"], ["value": "battery+time", "label": "Battery % + time left"], ["value": "watts", "label": "Power draw (W)"],
+                ["value": "net", "label": "Download speed"], ["value": "net2", "label": "Download + upload"], ["value": "disk", "label": "Disk read / write"],
+                ["value": "load", "label": "Load average"], ["value": "temp", "label": "Battery temperature"],
             ]],
-        ]],
-        ["label": "Customize window", "fields": [
+            ["key": "statsInterval", "type": "select", "label": "Update every", "options": [
+                ["value": 1, "label": "1 second"], ["value": 2, "label": "2 seconds"], ["value": 5, "label": "5 seconds"], ["value": 10, "label": "10 seconds"]]],
+            ["key": "statsTop", "type": "toggle", "label": "Top processes in the Stats tab"],
+            ["key": "_statsScene", "type": "note", "label": "The Monitor scene puts all of this on the wallpaper; any scene can read LTW.stats."],
+        ]]
+
+    private static let group10: [String: Any] = ["label": "Customize window", "fields": [
             ["key": "panelStyle", "type": "select", "label": "Background", "options": [
                 ["value": "translucent", "label": "Translucent blur"],
                 ["value": "solid", "label": "Solid"],
@@ -146,12 +180,14 @@ final class AppSettings {
             ["key": "panelButtons", "type": "toggle", "label": "Window buttons"],
             ["key": "panelOnTop", "type": "toggle", "label": "Keep on top"],
             ["key": "panelAutoHide", "type": "toggle", "label": "Hide when I click elsewhere"],
-        ]],
-        ["label": "Startup", "fields": [
+        ]]
+
+    private static let group11: [String: Any] = ["label": "Startup", "fields": [
             ["key": "loginItem", "type": "toggle", "label": "Open at login"],
             ["key": "dockIcon", "type": "toggle", "label": "Show in Dock"],
-        ]],
-    ]]
+        ]]
+
+    static let schema: [String: Any] = ["groups": [group1, group2, group3, group4, group5, group6, group7, group8, group9, group10, group11]]
 
     init() {
         // Older builds stored the tint as a Bool.
@@ -177,6 +213,25 @@ final class AppSettings {
     func set(_ k: String, _ v: Any) {
         guard Self.defaults[k] != nil, k != "loginItem" else { return }
         d.set(v, forKey: k)
+    }
+
+    func list(_ k: String) -> [String] { (d.object(forKey: k) as? [String]) ?? (Self.defaults[k] as? [String] ?? []) }
+
+    var switcherConfig: WindowManager.SwitcherConfig {
+        WindowManager.SwitcherConfig(pinned: list("switcherPinned"), hidden: list("switcherHidden"),
+                                     pinnedOnly: bool("switcherPinnedOnly"), sortByName: string("switcherSort") == "name")
+    }
+
+    /// Adds or removes an entry (bundle id or name) from one of the app-wheel lists. Returns the new state.
+    @discardableResult
+    func toggle(_ k: String, _ entry: String, on: Bool? = nil) -> Bool {
+        var l = list(k)
+        let has = l.contains { $0.caseInsensitiveCompare(entry) == .orderedSame }
+        let want = on ?? !has
+        if want, !has { l.append(entry) }
+        if !want { l.removeAll { $0.caseInsensitiveCompare(entry) == .orderedSame } }
+        d.set(l, forKey: k)
+        return want
     }
 
     func reset() {

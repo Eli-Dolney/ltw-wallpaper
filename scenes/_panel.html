@@ -79,6 +79,33 @@
   .spark { width: 100%; height: 36px; display: block; }
   .meter { height: 6px; border-radius: 3px; background: var(--switch); overflow: hidden; }
   .meter i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+  .card .v { font-size: 20px; }
+  .card .sub { color: var(--dim); font-size: 11px; margin-top: 6px; font-variant-numeric: tabular-nums; display: flex; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+  .card.wide { grid-column: 1 / -1; }
+  .card .hd { display: flex; justify-content: space-between; align-items: baseline; }
+  .card .hd .k { margin: 0; }
+  .card .hd .small { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .cores { display: flex; gap: 2px; height: 22px; align-items: flex-end; margin-top: 8px; }
+  .cores i { flex: 1; background: var(--accent); opacity: 0.85; border-radius: 1px; min-height: 1px; transition: height .3s; }
+  .stack { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--switch); margin-top: 6px; }
+  .stack i { display: block; height: 100%; transition: width .4s; }
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; font-size: 11px; color: var(--dim); }
+  .legend b { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .meter.warn i, .card.warn .v { background-color: #c94b3c; color: #e06a5c; }
+  .procs { margin-top: 4px; }
+  .proc { display: grid; grid-template-columns: 1fr 48px 64px; gap: 8px; align-items: center; padding: 3px 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .proc .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .proc .b { height: 4px; border-radius: 2px; background: var(--switch); overflow: hidden; grid-column: 1 / -1; margin-top: -2px; }
+  .proc .b i { display: block; height: 100%; background: var(--accent); }
+  .proc .m, .proc .c { text-align: right; color: var(--dim); }
+  .proc .c { color: var(--fg); }
+  .apps .approw { padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .apps .approw:last-child { border-bottom: 0; }
+  .apps .approw .name.off { color: var(--dim); }
+  .apps .approw .tag { font-size: 10px; color: var(--dim); border: 1px solid var(--ctl-line); border-radius: 4px; padding: 0 4px; }
+  .apps .ib { padding: 2px 7px; font-size: 12px; line-height: 1.2; }
+  .apps .ib.on { border-color: var(--accent); color: var(--accent); }
+  .apps .add { margin-top: 8px; width: 100%; }
   .hint { color: var(--dim); font-size: 11px; margin-top: 16px; }
 </style>
 </head>
@@ -120,14 +147,18 @@
 </section>
 
 <section id="tab-stats" hidden>
-  <div class="bar"><span class="title">System</span></div>
+  <div class="bar"><span class="title">System</span><span class="hint" style="margin:0" id="st-when"></span></div>
   <div class="cards">
-    <div class="card"><div class="k">CPU</div><div class="v" id="st-cpu">—</div><canvas class="spark" id="sp-cpu"></canvas></div>
-    <div class="card"><div class="k">Memory</div><div class="v" id="st-mem">—</div><div class="meter"><i id="st-membar"></i></div></div>
-    <div class="card"><div class="k">Battery</div><div class="v" id="st-bat">—</div><div class="meter"><i id="st-batbar"></i></div></div>
-    <div class="card"><div class="k">Network</div><div class="v small" id="st-net">—</div><canvas class="spark" id="sp-net"></canvas></div>
+    <div class="card" id="c-cpu"><div class="hd"><div class="k">CPU</div><span class="small" id="st-load"></span></div><div class="v" id="st-cpu">—</div><canvas class="spark" id="sp-cpu"></canvas><div class="cores" id="st-cores"></div><div class="sub"><span id="st-cpusplit"></span></div></div>
+    <div class="card" id="c-gpu"><div class="k">GPU</div><div class="v" id="st-gpu">—</div><canvas class="spark" id="sp-gpu"></canvas><div class="sub"><span id="st-thermal"></span></div></div>
+    <div class="card wide" id="c-mem"><div class="hd"><div class="k">Memory</div><span class="small" id="st-swap"></span></div><div class="v" id="st-mem">—</div><div class="stack"><i id="mb-app" style="background:var(--accent)"></i><i id="mb-wired" style="background:#8a7cf0"></i><i id="mb-comp" style="background:#e0a85a"></i><i id="mb-cache" style="background:rgba(128,128,128,0.35)"></i></div><div class="legend"><span><b style="background:var(--accent)"></b>App <span id="ml-app"></span></span><span><b style="background:#8a7cf0"></b>Wired <span id="ml-wired"></span></span><span><b style="background:#e0a85a"></b>Compressed <span id="ml-comp"></span></span><span><b style="background:rgba(128,128,128,0.35)"></b>Cached <span id="ml-cache"></span></span></div></div>
+    <div class="card" id="c-bat"><div class="hd"><div class="k">Battery</div><span class="small" id="st-batsub"></span></div><div class="v" id="st-bat">—</div><div class="meter"><i id="st-batbar"></i></div><div class="sub"><span id="st-bat1"></span><span id="st-bat2"></span></div></div>
+    <div class="card" id="c-net"><div class="hd"><div class="k">Network</div><span class="small" id="st-if"></span></div><div class="v small" id="st-net">—</div><canvas class="spark" id="sp-net"></canvas><div class="sub"><span id="st-nettot"></span></div></div>
+    <div class="card" id="c-disk"><div class="hd"><div class="k">Disk</div><span class="small" id="st-diskfree"></span></div><div class="v small" id="st-disk">—</div><canvas class="spark" id="sp-disk"></canvas><div class="meter"><i id="st-diskbar"></i></div></div>
+    <div class="card" id="c-sys"><div class="k">System</div><div class="v small" id="st-up">—</div><div class="sub"><span id="st-procs"></span><span id="st-self"></span></div></div>
+    <div class="card wide" id="c-top"><div class="hd"><div class="k">Top processes</div><span class="small">% of one core</span></div><div class="procs" id="st-top"></div></div>
   </div>
-  <div class="hint" id="st-up"></div>
+  <div class="hint">Stats update every few seconds (Customize → App → Monitor). The Monitor scene shows all of this on the wallpaper; <code>./ltw stats</code> prints it.</div>
 </section>
 
 <script>
@@ -268,41 +299,104 @@ function volRow(a) {
 document.getElementById('mixerRefresh').addEventListener('click', () => post({ type: 'mixer', action: 'refresh' }));
 
 // ---- System stats ------------------------------------------------------------------------
-const hist = { cpu: [], net: [] };
-let lastStats = null;
-const fmtBytes = (b, ps) => { const u = ['B', 'KB', 'MB', 'GB', 'TB']; let v = b, i = 0; while (v >= 1000 && i < u.length - 1) { v /= 1000; i++; } return (i === 0 ? v.toFixed(0) : (v < 10 ? v.toFixed(1) : v.toFixed(0))) + ' ' + u[i] + (ps ? '/s' : ''); };
+const hist = { cpu: [], gpu: [], down: [], up: [], read: [], write: [] };
+const HIST = 90;
+let lastStats = null, lastStatsAt = 0;
+const fmtBytes = (b, ps) => { const u = ['B', 'KB', 'MB', 'GB', 'TB']; let v = b || 0, i = 0; while (v >= 1000 && i < u.length - 1) { v /= 1000; i++; } return (i === 0 ? v.toFixed(0) : (v < 10 ? v.toFixed(1) : v.toFixed(0))) + ' ' + u[i] + (ps ? '/s' : ''); };
+const pct = (x) => Math.round((x || 0) * 100) + '%';
+const mins = (m) => m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm';
+const push = (k, v) => { hist[k].push(v || 0); if (hist[k].length > HIST) hist[k].shift(); };
 window.__stats = function (s) {
-  lastStats = s;
-  hist.cpu.push(s.cpu); hist.net.push(s.netIn + s.netOut);
-  if (hist.cpu.length > 60) hist.cpu.shift();
-  if (hist.net.length > 60) hist.net.shift();
+  lastStats = s; lastStatsAt = Date.now();
+  push('cpu', s.cpu); push('gpu', s.gpu == null ? 0 : s.gpu); push('down', s.netIn); push('up', s.netOut); push('read', s.diskRead); push('write', s.diskWrite);
   if (tab === 'stats') drawStats();
 };
+const $ = (id) => document.getElementById(id);
 function drawStats() {
   const s = lastStats; if (!s) return;
-  document.getElementById('st-cpu').textContent = Math.round(s.cpu * 100) + '%';
-  document.getElementById('st-mem').textContent = fmtBytes(s.memUsed) + ' / ' + fmtBytes(s.memTotal);
-  document.getElementById('st-membar').style.width = (s.memTotal ? s.memUsed / s.memTotal * 100 : 0) + '%';
-  document.getElementById('st-bat').textContent = s.battery == null ? 'No battery' : Math.round(s.battery * 100) + '%' + (s.charging ? ' ⚡︎' : '');
-  document.getElementById('st-batbar').style.width = (s.battery == null ? 0 : s.battery * 100) + '%';
-  document.getElementById('st-net').textContent = '↓ ' + fmtBytes(s.netIn, true) + '   ↑ ' + fmtBytes(s.netOut, true);
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#d97757';
+  $('st-when').textContent = 'updated ' + new Date(lastStatsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  // CPU
+  $('st-cpu').textContent = pct(s.cpu);
+  $('c-cpu').classList.toggle('warn', s.cpu > 0.9);
+  $('st-load').textContent = s.loadAvg ? 'load ' + s.loadAvg.map(x => x.toFixed(2)).join(' ') : '';
+  $('st-cpusplit').textContent = 'user ' + pct(s.cpuUser) + ' · system ' + pct(s.cpuSystem) + (s.cores ? ' · ' + s.cores.length + ' cores' : '');
+  const cores = $('st-cores');
+  if (cores.children.length !== (s.cores || []).length) { cores.innerHTML = ''; (s.cores || []).forEach(() => cores.appendChild(document.createElement('i'))); }
+  (s.cores || []).forEach((c, i) => { cores.children[i].style.height = Math.max(4, c * 100) + '%'; cores.children[i].style.opacity = 0.35 + 0.65 * c; });
+  spark('sp-cpu', hist.cpu, 1, accent);
+  // GPU
+  $('c-gpu').hidden = s.gpu == null;
+  if (s.gpu != null) { $('st-gpu').textContent = pct(s.gpu); spark('sp-gpu', hist.gpu, 1, accent); }
+  $('st-thermal').textContent = 'thermal: ' + (s.thermal || 'nominal');
+  // Memory
+  $('st-mem').textContent = fmtBytes(s.memUsed) + ' / ' + fmtBytes(s.memTotal);
+  $('st-swap').textContent = s.swapUsed > 0 ? 'swap ' + fmtBytes(s.swapUsed) : 'no swap';
+  const T = s.memTotal || 1;
+  $('mb-app').style.width = (s.memApp / T * 100) + '%'; $('mb-wired').style.width = (s.memWired / T * 100) + '%';
+  $('mb-comp').style.width = (s.memCompressed / T * 100) + '%'; $('mb-cache').style.width = (s.memCached / T * 100) + '%';
+  $('ml-app').textContent = fmtBytes(s.memApp); $('ml-wired').textContent = fmtBytes(s.memWired); $('ml-comp').textContent = fmtBytes(s.memCompressed); $('ml-cache').textContent = fmtBytes(s.memCached);
+  $('c-mem').classList.toggle('warn', s.memUsed / T > 0.9);
+  // Battery
+  $('c-bat').hidden = s.battery == null;
+  if (s.battery != null) {
+    $('st-bat').textContent = pct(s.battery) + (s.charging ? ' ⚡︎' : '');
+    $('st-batbar').style.width = (s.battery * 100) + '%';
+    $('st-batbar').parentElement.classList.toggle('warn', s.battery < 0.15 && !s.pluggedIn);
+    $('st-batsub').textContent = s.charging ? 'charging' : (s.pluggedIn ? 'plugged in' : 'on battery');
+    const a = [];
+    if (s.timeRemaining != null) a.push(mins(s.timeRemaining) + (s.charging ? ' to full' : ' left'));
+    if (s.watts != null) a.push(Math.abs(s.watts).toFixed(1) + ' W');
+    const b = [];
+    if (s.health != null) b.push('health ' + pct(s.health)); if (s.cycles != null) b.push(s.cycles + ' cycles'); if (s.batteryTemp != null) b.push(s.batteryTemp.toFixed(0) + ' °C');
+    $('st-bat1').textContent = a.join(' · '); $('st-bat2').textContent = b.join(' · ');
+  }
+  // Network
+  $('st-net').textContent = '↓ ' + fmtBytes(s.netIn, true) + '   ↑ ' + fmtBytes(s.netOut, true);
+  $('st-if').textContent = s.netInterface || '';
+  $('st-nettot').textContent = 'since boot: ' + fmtBytes(s.netTotalIn) + ' in, ' + fmtBytes(s.netTotalOut) + ' out';
+  spark2('sp-net', hist.down, hist.up, accent);
+  // Disk
+  $('st-disk').textContent = 'R ' + fmtBytes(s.diskRead, true) + '   W ' + fmtBytes(s.diskWrite, true);
+  $('st-diskfree').textContent = fmtBytes(s.diskFree) + ' free';
+  $('st-diskbar').style.width = (s.diskTotal ? (1 - s.diskFree / s.diskTotal) * 100 : 0) + '%';
+  $('st-diskbar').parentElement.classList.toggle('warn', s.diskTotal && s.diskFree / s.diskTotal < 0.08);
+  spark2('sp-disk', hist.read, hist.write, accent);
+  // System
   const up = s.uptime || 0, d = Math.floor(up / 86400), hh = Math.floor(up % 86400 / 3600), mm = Math.floor(up % 3600 / 60);
-  document.getElementById('st-up').textContent = 'Uptime ' + (d ? d + 'd ' : '') + hh + 'h ' + mm + 'm · updates every 2 s';
-  spark('sp-cpu', hist.cpu, 1);
-  spark('sp-net', hist.net, Math.max(1, ...hist.net));
+  $('st-up').textContent = 'up ' + (d ? d + 'd ' : '') + hh + 'h ' + mm + 'm';
+  $('st-procs').textContent = (s.processes || 0) + ' processes';
+  $('st-self').textContent = s.self ? 'wallpaper ' + (s.self.cpu * 100).toFixed(1) + '% · ' + fmtBytes(s.self.mem) : '';
+  // Top
+  const top = $('st-top'); const list = s.top || [];
+  $('c-top').hidden = !list.length;
+  top.innerHTML = '';
+  const maxCpu = Math.max(0.25, ...list.map(p => p.cpu));
+  for (const p of list) {
+    const row = document.createElement('div'); row.className = 'proc';
+    row.innerHTML = `<span class="n">${esc(p.name)}</span><span class="c">${(p.cpu * 100).toFixed(0)}%</span><span class="m">${fmtBytes(p.mem)}</span><span class="b"><i style="width:${Math.min(100, p.cpu / maxCpu * 100)}%"></i></span>`;
+    top.appendChild(row);
+  }
 }
-function spark(id, data, max) {
+function sparkCtx(id) {
   const c = document.getElementById(id), dpr = devicePixelRatio || 1;
   const w = c.width = Math.max(1, c.clientWidth * dpr), h = c.height = Math.max(1, c.clientHeight * dpr);
   const ctx = c.getContext('2d'); ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h, dpr };
+}
+function line(ctx, data, max, w, h, dpr, color, fill) {
   if (data.length < 2) return;
-  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#d97757';
   ctx.beginPath();
-  data.forEach((v, i) => { const x = w * i / 59, y = h - 1 - (v / max) * (h - 3); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-  ctx.strokeStyle = accent; ctx.lineWidth = 1.5 * dpr; ctx.stroke();
-  const last = data.length - 1;
-  ctx.lineTo(w * last / 59, h); ctx.lineTo(0, h); ctx.closePath();
-  ctx.fillStyle = accent; ctx.globalAlpha = 0.15; ctx.fill(); ctx.globalAlpha = 1;
+  data.forEach((v, i) => { const x = w * i / (HIST - 1), y = h - 1 - (v / max) * (h - 3); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5 * dpr; ctx.stroke();
+  if (fill) { ctx.lineTo(w * (data.length - 1) / (HIST - 1), h); ctx.lineTo(0, h); ctx.closePath(); ctx.fillStyle = color; ctx.globalAlpha = 0.15; ctx.fill(); ctx.globalAlpha = 1; }
+}
+function spark(id, data, max, accent) { const { ctx, w, h, dpr } = sparkCtx(id); line(ctx, data, max, w, h, dpr, accent, true); }
+function spark2(id, a, b, accent) {
+  const { ctx, w, h, dpr } = sparkCtx(id);
+  const max = Math.max(1, ...a, ...b);
+  line(ctx, a, max, w, h, dpr, accent, true);
+  line(ctx, b, max, w, h, dpr, getComputedStyle(document.documentElement).getPropertyValue('--dim').trim() || '#888', false);
 }
 
 function renderForm(c, schema, form, emptyText) {
@@ -369,6 +463,22 @@ function field(c, f) {
       s.addEventListener('change', () => apply(s.value));
     }; break;
     case 'note': row.classList.add('wide', 'note'); build = () => { ctl.remove(); label.querySelector('.revert').remove(); }; break;
+    case 'apps': row.classList.add('wide', 'apps'); build = () => {
+      label.remove(); ctl.innerHTML = ''; ctl.style.display = 'block';
+      const apps = S.apps || [];
+      if (!apps.length) { ctl.innerHTML = '<div class="empty">No apps running.</div>'; }
+      for (const a of apps) {
+        const r = document.createElement('div'); r.className = 'approw';
+        r.innerHTML = `${a.icon ? `<img src="${a.icon}">` : '<span class="noicon"></span>'}<span class="name ${a.running ? '' : 'off'}">${esc(a.name)}</span>${a.running ? '' : '<span class="tag">not running</span>'}<button class="ib pin ${a.pinned ? 'on' : ''}" title="Pin: fixed place on the wheel, launches when not running">📌</button><button class="ib hide ${a.hidden ? 'on' : ''}" title="Hide from the wheel">${a.hidden ? '🚫' : '👁'}</button>`;
+        const entry = a.bundle || a.name;
+        r.querySelector('.pin').addEventListener('click', () => post({ type: 'pinapp', entry, list: 'switcherPinned', on: !a.pinned }));
+        r.querySelector('.hide').addEventListener('click', () => post({ type: 'pinapp', entry, list: 'switcherHidden', on: !a.hidden }));
+        ctl.appendChild(r);
+      }
+      const add = document.createElement('button'); add.className = 'add'; add.textContent = 'Pin another app…';
+      add.addEventListener('click', () => post({ type: 'pickapp' }));
+      ctl.appendChild(add);
+    }; break;
     case 'action': build = () => {
       ctl.innerHTML = `<button>${esc(f.button || 'Go')}</button>`;
       ctl.firstChild.addEventListener('click', () => post({ type: 'action', ctx: c.type, name: f.key }));
@@ -399,7 +509,7 @@ function field(c, f) {
     };
   }
   build(cur);
-  if (f.type === 'action' || f.type === 'note') return row;
+  if (f.type === 'action' || f.type === 'note' || f.type === 'apps') return row;
   label.querySelector('.revert').addEventListener('click', () => { const d = JSON.parse(JSON.stringify(def === undefined ? null : def)); apply(d); build(d); });
   return row;
 }

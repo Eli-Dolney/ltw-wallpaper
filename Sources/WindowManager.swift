@@ -55,11 +55,26 @@ final class WindowManager {
         let app: NSRunningApplication
     }
 
-    /// One entry of the app switcher: an app, or one window of an app.
+    /// One entry of the app switcher: a running app, one window of an app, or a pinned app that is not
+    /// running yet (picking it launches it).
     struct SwitchItem {
-        let app: NSRunningApplication
+        let app: NSRunningApplication?
+        let url: URL?
         let window: AXUIElement?
         let title: String
+        let icon: NSImage?
+        let bundle: String
+        var isCurrent = false
+        var isPinned = false
+        var isRunning: Bool { app != nil }
+    }
+
+    /// How the user shaped the app wheel (Customize → App → App wheel).
+    struct SwitcherConfig {
+        var pinned: [String] = []      // bundle ids or app names, in wheel order
+        var hidden: [String] = []
+        var pinnedOnly = false
+        var sortByName = false
     }
 
     /// Frames before the last few layouts, so "Restore Size" can undo them.
@@ -149,45 +164,124 @@ final class WindowManager {
 
     // MARK: App switcher
 
-    /// Items for the app wheel: apps in recency order, or their windows. `max` caps the count.
-    func switchItems(windows wantWindows: Bool, max: Int) -> [SwitchItem] {
+    /// Does `entry` (a bundle id or an app name from the pinned/hidden lists) name this app?
+    static func matches(_ entry: String, bundle: String?, name: String?) -> Bool {
+        let e = entry.trimmingCharacters(in: .whitespaces)
+        guard !e.isEmpty else { return false }
+        if let b = bundle, b.caseInsensitiveCompare(e) == .orderedSame { return true }
+        if let n = name, n.caseInsensitiveCompare(e) == .orderedSame { return true }
+        if let n = name, e.lowercased().hasSuffix(".app"), String(e.dropLast(4)).caseInsensitiveCompare(n) == .orderedSame { return true }
+        return false
+    }
+
+    /// Finds an app by bundle id or name: running first, then installed (Spotlight's index via
+    /// LaunchServices, then the usual Applications folders).
+    func resolve(_ entry: String) -> SwitchItem? {
+        let e = entry.trimmingCharacters(in: .whitespaces)
+        guard !e.isEmpty else { return nil }
+        if let a = NSWorkspace.shared.runningApplications.first(where: { $0.activationPolicy == .regular && Self.matches(e, bundle: $0.bundleIdentifier, name: $0.localizedName) }) {
+            return SwitchItem(app: a, url: a.bundleURL, window: nil, title: a.localizedName ?? e, icon: a.icon, bundle: a.bundleIdentifier ?? e)
+        }
+        var url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: e)
+        if url == nil {
+            let name = e.lowercased().hasSuffix(".app") ? e : e + ".app"
+            for dir in ["/Applications", "/System/Applications", "/System/Applications/Utilities", "/Applications/Utilities",
+                        NSHomeDirectory() + "/Applications", "/System/Library/CoreServices"] {
+                let u = URL(fileURLWithPath: dir).appendingPathComponent(name)
+                if FileManager.default.fileExists(atPath: u.path) { url = u; break }
+            }
+        }
+        guard let u = url, let b = Bundle(url: u) else { return nil }
+        let title = (b.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String) ?? (b.object(forInfoDictionaryKey: "CFBundleName") as? String)
+            ?? u.deletingPathExtension().lastPathComponent
+        return SwitchItem(app: nil, url: u, window: nil, title: title, icon: NSWorkspace.shared.icon(forFile: u.path), bundle: b.bundleIdentifier ?? e)
+    }
+
+    private func item(for app: NSRunningApplication) -> SwitchItem {
+        SwitchItem(app: app, url: app.bundleURL, window: nil, title: app.localizedName ?? "App", icon: app.icon, bundle: app.bundleIdentifier ?? "")
+    }
+
+    private func isHidden(_ app: NSRunningApplication, _ cfg: SwitcherConfig) -> Bool {
+        cfg.hidden.contains { Self.matches($0, bundle: app.bundleIdentifier, name: app.localizedName) }
+    }
+
+    /// Running apps in recency order (apps that launched since we last looked go last), minus us.
+    func runningApps() -> [NSRunningApplication] {
         recent.removeAll { $0.isTerminated }
         let me = ProcessInfo.processInfo.processIdentifier
-        // Apps that launched since we last looked (or before recency tracking saw them) go last.
         var apps = recent
         for a in NSWorkspace.shared.runningApplications where a.activationPolicy == .regular && a.processIdentifier != me
             && !apps.contains(where: { $0.processIdentifier == a.processIdentifier }) { apps.append(a) }
+        return apps
+    }
+
+    /// Items for the app wheel: pinned apps first (in the pinned order, running or not), then the
+    /// other running apps most recent first, or their windows. `max` caps the count. The app you are
+    /// in is dropped from the recent part (it is where you already are) but a pinned app stays put so
+    /// every pin keeps its place on the wheel.
+    func switchItems(windows wantWindows: Bool, max: Int, config cfg: SwitcherConfig, current: NSRunningApplication?) -> [SwitchItem] {
         var items: [SwitchItem] = []
-        for app in apps {
-            if wantWindows, WindowManager.trusted {
-                for w in windows(of: app) {
-                    let t = title(of: w)
-                    guard !t.isEmpty else { continue }
-                    items.append(SwitchItem(app: app, window: w, title: t))
+        var seen = Set<String>()
+        for entry in cfg.pinned {
+            guard var it = resolve(entry), !seen.contains(it.bundle.lowercased()) else { continue }
+            if let a = it.app, isHidden(a, cfg) { continue }
+            seen.insert(it.bundle.lowercased())
+            it.isPinned = true
+            it.isCurrent = it.app != nil && it.app?.processIdentifier == current?.processIdentifier
+            items.append(it)
+        }
+        if !cfg.pinnedOnly {
+            var apps = runningApps().filter { !isHidden($0, cfg) }
+            apps.removeAll { a in seen.contains((a.bundleIdentifier ?? "").lowercased()) && !(a.bundleIdentifier ?? "").isEmpty }
+            if !wantWindows { apps.removeAll { $0.processIdentifier == current?.processIdentifier } }
+            if cfg.sortByName { apps.sort { ($0.localizedName ?? "").localizedCaseInsensitiveCompare($1.localizedName ?? "") == .orderedAscending } }
+            for app in apps {
+                if wantWindows, WindowManager.trusted {
+                    for w in windows(of: app) {
+                        let t = title(of: w)
+                        guard !t.isEmpty else { continue }
+                        items.append(SwitchItem(app: app, url: app.bundleURL, window: w, title: t, icon: app.icon, bundle: app.bundleIdentifier ?? ""))
+                        if items.count >= max { return items }
+                    }
+                } else {
+                    items.append(item(for: app))
                     if items.count >= max { return items }
                 }
-            } else {
-                items.append(SwitchItem(app: app, window: nil, title: app.localizedName ?? "App"))
-                if items.count >= max { return items }
             }
         }
-        return items
+        return Array(items.prefix(max))
+    }
+
+    /// The app to jump back to from the hub: the most recently used app other than the current one.
+    func previousApp(current: NSRunningApplication?, config cfg: SwitcherConfig) -> SwitchItem? {
+        runningApps().first { $0.processIdentifier != current?.processIdentifier && !isHidden($0, cfg) }.map { item(for: $0) }
     }
 
     /// Brings an app (or one of its windows) to the front.
     func activate(_ item: SwitchItem) {
-        if item.app.isHidden { item.app.unhide() }
+        guard let app = item.app else {
+            // A pinned app that is not running: launch it.
+            if let u = item.url {
+                let cfg = NSWorkspace.OpenConfiguration()
+                cfg.activates = true
+                NSWorkspace.shared.openApplication(at: u, configuration: cfg) { _, err in
+                    if let err = err { log.notice("switcher: launch \(u.lastPathComponent, privacy: .public) failed: \(err.localizedDescription, privacy: .public)") }
+                }
+            }
+            return
+        }
+        if app.isHidden { app.unhide() }
         if let w = item.window {
             if isMinimized(w) { AXUIElementSetAttributeValue(w, kAXMinimizedAttribute as CFString, kCFBooleanFalse) }
             AXUIElementPerformAction(w, kAXRaiseAction as CFString)
         } else if WindowManager.trusted {
             // Every window minimized: bring one back so activating shows something.
-            let ws = windows(of: item.app)
+            let ws = windows(of: app)
             if !ws.isEmpty, ws.allSatisfy({ isMinimized($0) }), let w = ws.first {
                 AXUIElementSetAttributeValue(w, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
             }
         }
-        item.app.activate(options: [.activateIgnoringOtherApps])
+        app.activate(options: [.activateIgnoringOtherApps])
     }
 
     // MARK: Geometry

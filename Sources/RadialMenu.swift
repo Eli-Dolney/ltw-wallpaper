@@ -6,6 +6,9 @@ struct WheelItem {
     var icon: NSImage? = nil          // app icon (switcher)
     var layout: WindowLayout? = nil   // mini layout glyph (window wheel)
     var subtitle: String = ""         // window title under the app name, shown in the hub
+    var pinned = false                // small pin mark on the wedge
+    var current = false               // the app you are in (dot under the icon)
+    var dimmed = false                // not running yet
 }
 
 /// A GTA-style weapon wheel. Hold the hotkey: the wheel opens around the cursor, moving toward a
@@ -145,7 +148,28 @@ final class WheelView: NSView {
     override func mouseDragged(with event: NSEvent) { updateHover(panelPoint: event.locationInWindow) }
     override func mouseDown(with event: NSEvent) { updateHover(panelPoint: event.locationInWindow); onClick?() }
     override func rightMouseDown(with event: NSEvent) { onCancel?() }
-    override func keyDown(with event: NSEvent) { if event.keyCode == 53 { onCancel?() } }   // Esc
+    override func keyDown(with event: NSEvent) {
+        switch event.keyCode {
+        case 53: onCancel?()                                   // Esc
+        case 36, 49, 76: if hover != .none { onClick?() }      // Return, Space, Enter
+        case 48, 124, 125: step(event.modifierFlags.contains(.shift) || event.keyCode == 125 ? -1 : 1)   // Tab / → / ↓ forward, ⇧Tab / ← / ↑ back
+        case 123, 126: step(-1)
+        default:
+            // 1–9 pick a wedge directly; 0 is the hub.
+            if let ch = event.charactersIgnoringModifiers?.first, let d = ch.wholeNumberValue {
+                if d == 0, hub != nil { hover = .hub; onClick?() }
+                else if d >= 1, d <= items.count { hover = .wedge(d - 1); onClick?() }
+            }
+        }
+    }
+
+    private func step(_ by: Int) {
+        guard !items.isEmpty else { return }
+        switch hover {
+        case .wedge(let i): hover = .wedge((i + by + items.count) % items.count)
+        default: hover = .wedge(by > 0 ? 0 : items.count - 1)
+        }
+    }
 
     func updateHover(panelPoint p: CGPoint) {
         guard !items.isEmpty else { hover = .none; return }
@@ -206,7 +230,17 @@ final class WheelView: NSView {
             } else if let icon = item.icon {
                 // Icon sized to the wedge; the label sits outside the ring, along the wedge direction.
                 let s = min(R * 0.3, gm * step * 0.62)
-                icon.draw(in: CGRect(x: gc.x - s / 2, y: gc.y - s / 2, width: s, height: s), from: .zero, operation: .sourceOver, fraction: on ? 1 : 0.92)
+                icon.draw(in: CGRect(x: gc.x - s / 2, y: gc.y - s / 2, width: s, height: s), from: .zero, operation: .sourceOver,
+                          fraction: item.dimmed ? 0.55 : (on ? 1 : 0.92))
+                if item.current {
+                    ctx.setFillColor((on ? NSColor.white : accent).cgColor)
+                    ctx.fillEllipse(in: CGRect(x: gc.x - 2.5, y: gc.y - s / 2 - 7, width: 5, height: 5))
+                }
+                if item.pinned, let pin = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: nil) {
+                    let ps = max(8, s * 0.3)
+                    let tinted = pin.tinted(on ? NSColor.white : NSColor.white.withAlphaComponent(0.75))
+                    tinted.draw(in: CGRect(x: gc.x + s / 2 - ps * 0.7, y: gc.y + s / 2 - ps * 0.7, width: ps, height: ps), from: .zero, operation: .sourceOver, fraction: 1)
+                }
                 if labels {
                     let lp = CGPoint(x: cos(mid) * (R + 14), y: sin(mid) * (R + 14))
                     drawLabel(item.label, at: lp, angle: mid, size: max(9, R * 0.07), on: on)
@@ -226,7 +260,7 @@ final class WheelView: NSView {
         if !trusted { title = "Allow Accessibility"; sub = "in System Settings" }
         else if case .wedge(let i) = hover { title = items[i].label; sub = items[i].subtitle; icon = items[i].icon ?? icon }
         else if hubOn, let h = hub { title = h.label; sub = h.subtitle; icon = h.icon ?? icon }
-        else if sticky { sub = "Click to pick" }
+        else if sticky { sub = items.count <= 9 ? "Click, or press 1–\(items.count)" : "Click to pick" }
         if let icon = icon {
             let s = hubR * 0.7
             icon.draw(in: CGRect(x: -s / 2, y: hubR * 0.08, width: s, height: s), from: .zero, operation: .sourceOver, fraction: 0.95)
@@ -282,5 +316,18 @@ final class WheelView: NSView {
         let shadow = NSShadow(); shadow.shadowColor = NSColor.black.withAlphaComponent(0.8); shadow.shadowBlurRadius = 3
         var a = attrs; a[.shadow] = shadow
         NSAttributedString(string: text, attributes: a).draw(in: box)
+    }
+}
+
+extension NSImage {
+    /// A template-style copy filled with `color`.
+    func tinted(_ color: NSColor) -> NSImage {
+        let img = NSImage(size: size, flipped: false) { rect in
+            color.set()
+            rect.fill()
+            self.draw(in: rect, from: .zero, operation: .destinationIn, fraction: 1)
+            return true
+        }
+        return img
     }
 }
