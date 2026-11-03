@@ -46,18 +46,44 @@ enum WindowLayout: String, CaseIterable {
     }
 }
 
-/// Moves and resizes other apps' windows through the Accessibility API. Needs the user to allow
-/// Ltw Wallpaper under System Settings → Privacy & Security → Accessibility.
+/// Moves and resizes other apps' windows, lists them, and switches between apps, through the
+/// Accessibility API. Needs the user to allow Ltw Wallpaper under System Settings → Privacy &
+/// Security → Accessibility.
 final class WindowManager {
     struct Target {
         let window: AXUIElement
         let app: NSRunningApplication
     }
 
+    /// One entry of the app switcher: an app, or one window of an app.
+    struct SwitchItem {
+        let app: NSRunningApplication
+        let window: AXUIElement?
+        let title: String
+    }
+
     /// Frames before the last few layouts, so "Restore Size" can undo them.
     private var remembered: [(AXUIElement, CGRect)] = []
     /// Space to leave between tiled windows and the screen edges, in points.
     var gap: CGFloat = 0
+    /// Apps in the order they were last activated, most recent first (our own app excluded).
+    private(set) var recent: [NSRunningApplication] = []
+    private var observer: NSObjectProtocol?
+
+    init() {
+        let me = ProcessInfo.processInfo.processIdentifier
+        recent = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && $0.processIdentifier != me }
+        if let front = NSWorkspace.shared.frontmostApplication { noteActivated(front) }
+        observer = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] n in
+            if let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication { self?.noteActivated(app) }
+        }
+    }
+
+    private func noteActivated(_ app: NSRunningApplication) {
+        guard app.processIdentifier != ProcessInfo.processInfo.processIdentifier, app.activationPolicy == .regular else { return }
+        recent.removeAll { $0.processIdentifier == app.processIdentifier || $0.isTerminated }
+        recent.insert(app, at: 0)
+    }
 
     static var trusted: Bool { AXIsProcessTrusted() }
     private static var prompted = false
@@ -74,16 +100,92 @@ final class WindowManager {
         }
     }
 
-    /// The focused window of the frontmost app (never our own).
+    /// The app the user is working in: the frontmost one, or, when that is Ltw Wallpaper itself
+    /// (Customize window open, wheel panel just clicked), the app that was active before it.
+    func userApp() -> NSRunningApplication? {
+        let me = ProcessInfo.processInfo.processIdentifier
+        if let f = NSWorkspace.shared.frontmostApplication, f.processIdentifier != me, f.activationPolicy == .regular { return f }
+        return recent.first { !$0.isTerminated }
+    }
+
+    /// The focused (or main, or first) window of the app the user is working in.
     func frontmost() -> Target? {
-        guard let app = NSWorkspace.shared.frontmostApplication,
-              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return nil }
+        guard let app = userApp() else { return nil }
+        let ax = AXUIElementCreateApplication(app.processIdentifier)
+        for attr in [kAXFocusedWindowAttribute, kAXMainWindowAttribute] {
+            var value: CFTypeRef?
+            if AXUIElementCopyAttributeValue(ax, attr as CFString, &value) == .success, let v = value, CFGetTypeID(v) == AXUIElementGetTypeID() {
+                return Target(window: v as! AXUIElement, app: app)
+            }
+        }
+        if let w = windows(of: app).first { return Target(window: w, app: app) }
+        return nil
+    }
+
+    /// The app's windows (AX order: front to back).
+    func windows(of app: NSRunningApplication) -> [AXUIElement] {
         let ax = AXUIElementCreateApplication(app.processIdentifier)
         var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(ax, kAXFocusedWindowAttribute as CFString, &value) == .success,
-              let v = value, CFGetTypeID(v) == AXUIElementGetTypeID() else { return nil }
-        return Target(window: v as! AXUIElement, app: app)
+        guard AXUIElementCopyAttributeValue(ax, kAXWindowsAttribute as CFString, &value) == .success, let list = value as? [AXUIElement] else { return [] }
+        return list
     }
+
+    func title(of window: AXUIElement) -> String {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &value) == .success else { return "" }
+        return value as? String ?? ""
+    }
+
+    func isMinimized(_ window: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &value) == .success else { return false }
+        return (value as? Bool) ?? false
+    }
+
+    // MARK: App switcher
+
+    /// Items for the app wheel: apps in recency order, or their windows. `max` caps the count.
+    func switchItems(windows wantWindows: Bool, max: Int) -> [SwitchItem] {
+        recent.removeAll { $0.isTerminated }
+        let me = ProcessInfo.processInfo.processIdentifier
+        // Apps that launched since we last looked (or before recency tracking saw them) go last.
+        var apps = recent
+        for a in NSWorkspace.shared.runningApplications where a.activationPolicy == .regular && a.processIdentifier != me
+            && !apps.contains(where: { $0.processIdentifier == a.processIdentifier }) { apps.append(a) }
+        var items: [SwitchItem] = []
+        for app in apps {
+            if wantWindows, WindowManager.trusted {
+                for w in windows(of: app) {
+                    let t = title(of: w)
+                    guard !t.isEmpty else { continue }
+                    items.append(SwitchItem(app: app, window: w, title: t))
+                    if items.count >= max { return items }
+                }
+            } else {
+                items.append(SwitchItem(app: app, window: nil, title: app.localizedName ?? "App"))
+                if items.count >= max { return items }
+            }
+        }
+        return items
+    }
+
+    /// Brings an app (or one of its windows) to the front.
+    func activate(_ item: SwitchItem) {
+        if item.app.isHidden { item.app.unhide() }
+        if let w = item.window {
+            if isMinimized(w) { AXUIElementSetAttributeValue(w, kAXMinimizedAttribute as CFString, kCFBooleanFalse) }
+            AXUIElementPerformAction(w, kAXRaiseAction as CFString)
+        } else if WindowManager.trusted {
+            // Every window minimized: bring one back so activating shows something.
+            let ws = windows(of: item.app)
+            if !ws.isEmpty, ws.allSatisfy({ isMinimized($0) }), let w = ws.first {
+                AXUIElementSetAttributeValue(w, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+            }
+        }
+        item.app.activate(options: [.activateIgnoringOtherApps])
+    }
+
+    // MARK: Geometry
 
     func frame(of window: AXUIElement) -> CGRect? {
         var posRef: CFTypeRef?, sizeRef: CFTypeRef?

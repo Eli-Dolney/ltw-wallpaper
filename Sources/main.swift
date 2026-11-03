@@ -80,7 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
     var rotateTimer: Timer?
     let hotkeys = HotKeys()
     let windowManager = WindowManager()
-    lazy var wheel = RadialMenu(manager: windowManager)
+    let wheel = RadialMenu()
     var thumbWork: DispatchWorkItem?
     var panel: CustomizePanel?
     lazy var store = SettingsStore(dir: appSupport.appendingPathComponent("settings", isDirectory: true))
@@ -177,28 +177,83 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
             hotkeys.register(id: 6, keyCode: UInt32(kVK_ANSI_W), modifiers: mods,
                              released: { [weak self] in self?.wheel.released() }) { [weak self] in self?.showWheel(sticky: false) }
         }
+        if settings.bool("switcher") {
+            hotkeys.register(id: 7, keyCode: UInt32(kVK_Tab), modifiers: mods,
+                             released: { [weak self] in self?.wheel.released() }) { [weak self] in self?.showSwitcher(sticky: false) }
+        }
     }
 
-    // MARK: Window wheel
+    // MARK: Window wheel and app wheel
 
     func applyWheelLook() {
         wheel.look.accent = NSColor(hex: settings.string("panelAccent")) ?? wheel.look.accent
         wheel.look.radius = CGFloat(settings.double("wheelSize"))
         wheel.look.dim = CGFloat(settings.double("wheelDim"))
+        wheel.look.labels = settings.bool("switcherLabels")
         windowManager.gap = CGFloat(settings.double("wheelGap"))
-        wheel.onSelect = { [weak self] layout, target in
+    }
+
+    /// ⌃⌥W: eight layouts around the cursor, "Center" in the hub, applied to the user's front window.
+    func showWheel(sticky: Bool) {
+        applyWheelLook()
+        if !WindowManager.trusted { WindowManager.requestTrust() }
+        let target = windowManager.frontmost()
+        let items = WindowLayout.wheel.map { WheelItem(label: $0.label, layout: $0) }
+        log.notice("wheel: shown (\(sticky ? "sticky" : "hold", privacy: .public)) for \(target?.app.localizedName ?? "nothing", privacy: .public)")
+        wheel.show(items: items, hub: WheelItem(label: WindowLayout.center.label), hubIcon: target?.app.icon,
+                   hubTitle: target?.app.localizedName ?? "No window", trusted: WindowManager.trusted, sticky: sticky) { [weak self] pick in
             guard let self = self else { return }
+            let layout: WindowLayout
+            switch pick {
+            case .hub: layout = .center
+            case .wedge(let i): layout = WindowLayout.wheel[i]
+            case .none: return
+            }
             let ok = self.windowManager.apply(layout, to: target)
-            log.notice("wheel: \(layout.rawValue) → \(target?.app.localizedName ?? "none") \(ok ? "ok" : "failed")")
+            log.notice("wheel: \(layout.rawValue, privacy: .public) → \(target?.app.localizedName ?? "none", privacy: .public) \(ok ? "ok" : "failed", privacy: .public)")
         }
     }
 
-    func showWheel(sticky: Bool) {
+    /// ⌃⌥Tab: running apps (or their windows) around the cursor, most recent first; the hub goes back
+    /// to the previous app, like ⌘Tab.
+    func showSwitcher(sticky: Bool) {
         applyWheelLook()
-        wheel.show(sticky: sticky)
+        let windowsMode = settings.string("switcherMode") == "windows"
+        let maxItems = max(3, min(12, Int(settings.double("switcherMax"))))
+        if windowsMode, !WindowManager.trusted { WindowManager.requestTrust() }
+        let all = windowManager.switchItems(windows: windowsMode, max: maxItems + 1)
+        let current = windowManager.userApp()
+        // The app you are in is the hub's "previous app" target only in apps mode; its wedge is dropped
+        // so the ring holds the places you can go to.
+        var list = all
+        var hub: WheelItem? = nil
+        if !windowsMode, let cur = current, let i = list.firstIndex(where: { $0.app.processIdentifier == cur.processIdentifier }) {
+            list.remove(at: i)
+        }
+        list = Array(list.prefix(maxItems))
+        if let prev = list.first {
+            hub = WheelItem(label: prev.title, icon: prev.app.icon, subtitle: windowsMode ? (prev.app.localizedName ?? "") : "previous")
+        }
+        guard !list.isEmpty else { return }
+        let items = list.map { WheelItem(label: windowsMode ? ($0.app.localizedName ?? "") : $0.title, icon: $0.app.icon,
+                                         subtitle: windowsMode ? $0.title : "") }
+        log.notice("switcher: shown (\(sticky ? "sticky" : "hold", privacy: .public)) \(list.count) items")
+        wheel.show(items: items, hub: hub, hubIcon: current?.icon, hubTitle: current?.localizedName ?? "Apps",
+                   trusted: !windowsMode || WindowManager.trusted, sticky: sticky) { [weak self] pick in
+            guard let self = self else { return }
+            let item: WindowManager.SwitchItem
+            switch pick {
+            case .hub: item = list[0]
+            case .wedge(let i): item = list[i]
+            case .none: return
+            }
+            log.notice("switcher: → \(item.title, privacy: .public)")
+            self.windowManager.activate(item)
+        }
     }
 
     @objc func wheelFromMenu() { showWheel(sticky: true) }
+    @objc func switcherFromMenu() { showSwitcher(sticky: true) }
 
     @objc func windowAction(_ sender: NSMenuItem) {
         guard let layout = WindowLayout(rawValue: sender.representedObject as? String ?? "") else { return }
@@ -729,7 +784,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
             restartRefreshTimer()
         case "rotateEvery", "rotateShuffle":
             restartRotateTimer()
-        case "hotkeys", "wheel":
+        case "hotkeys", "wheel", "switcher":
             applyHotkeys()
         case "batterySaver":
             power.saver = PowerMonitor.Saver(rawValue: settings.string("batterySaver")) ?? .auto
@@ -849,6 +904,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
         let win = NSMenu()
         let wheelItem = add(win, "Window Wheel…", #selector(wheelFromMenu), "w", "circle.grid.cross")
         wheelItem.toolTip = "Hold ⌃⌥W anywhere, move toward a layout, let go."
+        let appsItem = add(win, "App Wheel…", #selector(switcherFromMenu), "", "circle.grid.3x3")
+        appsItem.toolTip = "Hold ⌃⌥Tab, move toward an app, let go."
         win.addItem(.separator())
         for layout in [WindowLayout.left, .right, .top, .bottom, .maximize, .center, .nextDisplay, .minimize, .restore] {
             let item = NSMenuItem(title: layout.label, action: #selector(windowAction(_:)), keyEquivalent: "")
@@ -954,6 +1011,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
             customize()
         case "wheel":
             showWheel(sticky: true)
+        case "apps":
+            showSwitcher(sticky: true)
         case "window":
             let name = url.pathComponents.dropFirst().first ?? ""
             if let layout = WindowLayout(rawValue: name) { applyWheelLook(); windowManager.apply(layout) }

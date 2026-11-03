@@ -47,6 +47,10 @@ final class AppSettings {
         "wheelSize": 160.0,
         "wheelDim": 0.25,
         "wheelGap": 0.0,
+        "switcher": true,
+        "switcherMode": "apps",
+        "switcherMax": 8.0,
+        "switcherLabels": true,
         "statsInMenu": true,
         "loginItem": false,
         "dockIcon": false,
@@ -97,7 +101,7 @@ final class AppSettings {
         ]],
         ["label": "Shortcuts", "fields": [
             ["key": "hotkeys", "type": "toggle", "label": "Global shortcuts"],
-            ["key": "_hk", "type": "note", "label": "⌃⌥N next scene · ⌃⌥P pause animation · ⌃⌥K keep awake · ⌃⌥M mixer · ⌃⌥C customize · ⌃⌥W window wheel",
+            ["key": "_hk", "type": "note", "label": "⌃⌥N next scene · ⌃⌥P pause animation · ⌃⌥K keep awake · ⌃⌥M mixer · ⌃⌥C customize · ⌃⌥W window wheel · ⌃⌥Tab app wheel",
              "showIf": ["key": "hotkeys", "is": true]],
         ]],
         ["label": "Window wheel", "fields": [
@@ -107,6 +111,18 @@ final class AppSettings {
             ["key": "wheelSize", "type": "range", "label": "Size", "min": 100, "max": 260, "step": 10, "showIf": ["key": "wheel", "is": true]],
             ["key": "wheelDim", "type": "range", "label": "Dim the screen behind", "min": 0, "max": 0.6, "step": 0.05, "showIf": ["key": "wheel", "is": true]],
             ["key": "wheelGap", "type": "range", "label": "Gap between windows (px)", "min": 0, "max": 40, "step": 2, "showIf": ["key": "wheel", "is": true]],
+        ]],
+        ["label": "App wheel", "fields": [
+            ["key": "switcher", "type": "toggle", "label": "App wheel (⌃⌥Tab)"],
+            ["key": "_switcher", "type": "note", "label": "A radial ⌘Tab: hold ⌃⌥Tab, move toward an app, let go. The hub jumps back to the previous app. Tap to keep it open and click.",
+             "showIf": ["key": "switcher", "is": true]],
+            ["key": "switcherMode", "type": "select", "label": "Show", "options": [
+                ["value": "apps", "label": "Apps (most recent first)"],
+                ["value": "windows", "label": "Windows (needs Accessibility)"],
+            ], "showIf": ["key": "switcher", "is": true]],
+            ["key": "switcherMax", "type": "range", "label": "Slots on the wheel", "min": 3, "max": 12, "step": 1, "showIf": ["key": "switcher", "is": true]],
+            ["key": "switcherLabels", "type": "toggle", "label": "Names around the ring", "showIf": ["key": "switcher", "is": true]],
+            ["key": "_wheelShared", "type": "note", "label": "Size, dim and the accent color are shared with the window wheel above.", "showIf": ["key": "switcher", "is": true]],
         ]],
         ["label": "Monitor", "fields": [
             ["key": "statsInMenu", "type": "toggle", "label": "Stats at the top of the menu"],

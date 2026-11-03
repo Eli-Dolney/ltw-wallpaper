@@ -51,9 +51,11 @@ apply live and are saved per scene in `~/Library/Application Support/LtwWallpape
   menu as **Keep Awake** (⌘K) and `./ltw awake on|off`.
 - **Scenes**: change the scene automatically every 15 min … daily, optionally shuffled.
 - **Shortcuts**: global hotkeys ⌃⌥N next scene, ⌃⌥P pause/resume animation, ⌃⌥K keep awake,
-  ⌃⌥M mixer, ⌃⌥C customize, ⌃⌥W window wheel. Only the wheel needs the Accessibility permission.
+  ⌃⌥M mixer, ⌃⌥C customize, ⌃⌥W window wheel, ⌃⌥Tab app wheel. Only the window wheel (and the
+  app wheel's "windows" mode) needs the Accessibility permission.
 - **Window wheel**: the GTA-style radial menu for windows (below). Size, how much to dim the screen
   behind it, and a gap to leave between tiled windows.
+- **App wheel**: the radial ⌘Tab (below). Apps or windows, how many slots, names around the ring.
 - **Customize window**: translucent blur or solid background, opacity, dark / light / match system,
   accent color, hide the window buttons for a clean bar (close with ⌘W or Esc), keep on top (off makes
   it an ordinary window other apps cover), hide when you click elsewhere. Customize… in the menu and
@@ -277,6 +279,16 @@ The hub is "Center" (70 % of the screen, centered). Tap ⌃⌥W instead of holdi
 open so you can click a wedge; Esc, a right-click or a click outside closes it. The **Window** submenu
 in the menu bar has the same layouts as plain items plus Next Display, Minimize and Restore Size (undo
 the last snap), and `./ltw window left` etc. does it from the shell; `./ltw wheel` opens the wheel.
+
+### App wheel
+
+Hold **⌃⌥Tab** and the same wheel fills with your running apps, most recently used first, with their
+icons and names around the ring. Move toward one and let go to switch to it; the hub is the previous
+app, so a quick flick into the middle is ⌘Tab's "back to the last app". Tap ⌃⌥Tab to keep it open and
+click. Customize → App → **App wheel** switches between apps and individual windows (every window of
+every app, titles shown in the hub; needs Accessibility), sets how many slots the wheel has (3–12), and
+whether names are drawn around the ring. Hidden apps are unhidden and minimized windows restored when
+you pick them. `./ltw apps` opens it from the shell.
 
 Moving other apps' windows needs the **Accessibility** permission: the first use opens System
 Settings → Privacy & Security → Accessibility, where you switch on Ltw Wallpaper. Like the audio

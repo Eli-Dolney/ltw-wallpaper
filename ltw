@@ -15,6 +15,7 @@
 #   ./ltw vol <app> <percent> per-app volume (bundle id or app name), 0-200, 100 = untouched
 #   ./ltw snapshot [out.png]  save the current frame (default: ~/Pictures/Ltw Wallpaper)
 #   ./ltw wheel               open the window wheel at the cursor (⌃⌥W held does the same)
+#   ./ltw apps                open the app wheel at the cursor (⌃⌥Tab held does the same)
 #   ./ltw window <layout>     snap the front window: left right top bottom maximize center nextDisplay minimize restore
 cd "$(dirname "$0")"
 # Prefer the installed copy (./run.sh puts it there) so only one app ever runs.
@@ -31,7 +32,7 @@ case "$1" in
   awake)    v=true; [ "$2" = off ] && v=false; open -a "$APP" "ltw://appset?key=keepAwake&value=$v" ;;
   vol)      open -a "$APP" "ltw://vol?key=$(enc "$2")&value=$(enc "$3")" ;;
   window)   open -a "$APP" "ltw://window/$(enc "$2")" ;;
-  next|sync|customize|reset|pause|wheel) open -a "$APP" "ltw://$1" ;;
+  next|sync|customize|reset|pause|wheel|apps) open -a "$APP" "ltw://$1" ;;
   version)  defaults read "$APP/Contents/Info" CFBundleShortVersionString ;;
-  *) sed -n '2,19p' "$0"; exit 1 ;;
+  *) sed -n '2,20p' "$0"; exit 1 ;;
 esac

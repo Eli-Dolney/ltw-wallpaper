@@ -35,5 +35,9 @@ KC="$HOME/Library/Keychains/login.keychain-db"
 security import "$TMP/id.p12" -k "$KC" -P ltw -T /usr/bin/codesign -T /usr/bin/security >/dev/null
 # Trust it for code signing (this is the step that asks for your password).
 security add-trusted-cert -p codeSign -k "$KC" "$TMP/cert.pem"
+# Let codesign use the key without the "wants to use your keychain" dialog on every build
+# (asks for the login password once more).
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s "$KC" >/dev/null || \
+  echo "Could not pre-authorize codesign; click \"Always Allow\" if a keychain dialog appears during ./run.sh."
 rm -rf "$TMP"
 echo "Created \"$NAME\". Rebuild with ./run.sh; the next permission prompts you accept will stick across builds."
