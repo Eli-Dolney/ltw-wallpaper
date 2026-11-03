@@ -293,6 +293,10 @@ you pick them. `./ltw apps` opens it from the shell.
 Moving other apps' windows needs the **Accessibility** permission: the first use opens System
 Settings → Privacy & Security → Accessibility, where you switch on Ltw Wallpaper. Like the audio
 permission, macOS forgets it after every rebuild until you run `tools/make-signing-cert.sh` once.
+If the switch shows on but the wheel's hub still says "Allow Accessibility" (typical after the first
+build signed with that certificate), the row belongs to an older build: run
+`tccutil reset Accessibility com.ltw.wallpaper`, then Window → **Allow Window Management…** and
+switch it on again. The wheel's hub shows the app's icon and name once the grant is live.
 Customize → App → **Window wheel** sets the size, how much the screen dims behind it, and a gap to keep
 between tiled windows; the wheel uses the Customize accent color.
 
