@@ -516,6 +516,11 @@ function field(c, f) {
 
 document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') post({ type: 'close' }); });
+// Drag the window by any empty area, label or heading (controls keep working as controls).
+document.addEventListener('mousedown', (e) => {
+  if (e.button !== 0 || e.target.closest('button, input, select, textarea, .switch, .card-s, .x, .revert, .approw, .strip, canvas, .proc')) return;
+  post({ type: 'drag' });
+});
 document.getElementById('scene').addEventListener('change', (e) => post({ type: 'scene', name: e.target.value }));
 document.getElementById('reset').addEventListener('click', () => { if (confirm('Reset this scene to its defaults?')) post({ type: 'reset' }); });
 document.getElementById('appReset').addEventListener('click', () => { if (confirm('Reset the app settings (icon, menu bar tint, battery saver)?')) post({ type: 'appreset' }); });

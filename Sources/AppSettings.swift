@@ -111,7 +111,7 @@ final class AppSettings {
 
     private static let group5: [String: Any] = ["label": "Shortcuts", "fields": [
             ["key": "hotkeys", "type": "toggle", "label": "Global shortcuts"],
-            ["key": "_hk", "type": "note", "label": "⌃⌥N next scene · ⌃⌥P pause animation · ⌃⌥K keep awake · ⌃⌥M mixer · ⌃⌥C customize · ⌃⌥W window wheel · ⌃⌥Tab app wheel",
+            ["key": "_hk", "type": "note", "label": "⌃⌥N next scene · ⌃⌥P pause animation · ⌃⌥K keep awake · ⌃⌥M mixer · ⌃⌥C customize · ⌃⌥Space menu at the cursor · ⌃⌥W window wheel · ⌃⌥Tab app wheel",
              "showIf": ["key": "hotkeys", "is": true]],
         ]]
 

@@ -51,7 +51,7 @@ apply live and are saved per scene in `~/Library/Application Support/LtwWallpape
   menu as **Keep Awake** (⌘K) and `./ltw awake on|off`.
 - **Scenes**: change the scene automatically every 15 min … daily, optionally shuffled.
 - **Shortcuts**: global hotkeys ⌃⌥N next scene, ⌃⌥P pause/resume animation, ⌃⌥K keep awake,
-  ⌃⌥M mixer, ⌃⌥C customize, ⌃⌥W window wheel, ⌃⌥Tab app wheel. Only the window wheel (and the
+  ⌃⌥M mixer, ⌃⌥C customize, ⌃⌥Space the menu at the cursor, ⌃⌥W window wheel, ⌃⌥Tab app wheel. Only the window wheel (and the
   app wheel's "windows" mode) needs the Accessibility permission.
 - **Window wheel**: the GTA-style radial menu for windows (below). Size, how much to dim the screen
   behind it, and a gap to leave between tiled windows.
@@ -356,6 +356,16 @@ The lock screen is drawn by macOS from that same system wallpaper, and nothing c
 except Apple's built-in wallpapers. With **Lock screen shows the last frame** (on by default) the app
 takes one more snapshot the instant the screen locks, the displays sleep or you switch users, before
 the scene pauses, so the lock screen shows exactly what was on your desktop when you walked away.
+
+## Can't find the menu bar icon?
+
+On a MacBook with a notch, macOS hides the status items that do not fit to the right of the notch,
+newest first, and Ltw Wallpaper is usually the newest. The app is still running: press **⌃⌥Space**
+to pop its whole menu up at the mouse pointer, **⌃⌥C** for Customize, run `./ltw menu`, or open
+LtwWallpaper from Applications again (that just shows Customize). Freeing a few other icons, or
+switching on *Show in Dock* in Customize → App → Startup, makes it reachable for good. The Customize
+window drags by any empty area, minimizes, closes with Esc or ⌘W, and *Hide when I click elsewhere*
+(Customize → App → Customize window) is what makes it vanish when you click the desktop.
 
 ## Multiple displays, spaces, startup
 

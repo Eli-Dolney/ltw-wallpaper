@@ -174,6 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
         hotkeys.register(id: 3, keyCode: UInt32(kVK_ANSI_K), modifiers: mods) { [weak self] in self?.toggleKeepAwake() }
         hotkeys.register(id: 4, keyCode: UInt32(kVK_ANSI_M), modifiers: mods) { [weak self] in self?.openMixer() }
         hotkeys.register(id: 5, keyCode: UInt32(kVK_ANSI_C), modifiers: mods) { [weak self] in self?.toggleCustomize() }
+        hotkeys.register(id: 8, keyCode: UInt32(kVK_Space), modifiers: mods) { [weak self] in self?.menuAtCursor() }
         if settings.bool("wheel") {
             hotkeys.register(id: 6, keyCode: UInt32(kVK_ANSI_W), modifiers: mods,
                              released: { [weak self] in self?.wheel.released() }) { [weak self] in self?.showWheel(sticky: false) }
@@ -303,6 +304,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         Toast.show("Diagnostics copied to the clipboard", symbol: "doc.on.clipboard")
+    }
+
+    /// ⌃⌥Space and `ltw://menu`: the whole menu bar menu pops up at the mouse pointer. Useful on a
+    /// MacBook with a notch, where macOS silently hides the newest status items when the bar is full.
+    @objc func menuAtCursor() {
+        menuNeedsUpdate(menu)
+        let mouse = NSEvent.mouseLocation
+        menu.popUp(positioning: nil, at: mouse, in: nil)
     }
 
     @objc func wheelFromMenu() { showWheel(sticky: true) }
@@ -769,6 +778,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
             if let n = body["name"] as? String { defaults.set(n, forKey: "panelTab"); if n == "stats" { statsTick() } }
         case "close":
             panel?.window?.performClose(nil)
+        case "drag":
+            // The page reported a mouse-down on an empty area: let the window follow the mouse.
+            if let e = NSApp.currentEvent, let w = panel?.window { w.performDrag(with: e) }
         case "appset":
             if let key = body["key"] as? String, let value = body["value"] { applyAppSetting(key, value) }
         case "appreset":
@@ -864,6 +876,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
 
     func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem.autosaveName = "LtwWallpaper"   // keep the spot the user ⌘-drags it to
         updateStatusIcon()
         menu.delegate = self
         statusItem.menu = menu
@@ -1159,6 +1172,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
             if let p = arg("path"), !p.isEmpty { snapshot(to: URL(fileURLWithPath: p)) } else { saveSnapshot() }
         case "customize":
             customize()
+        case "menu":
+            menuAtCursor()
         case "wheel":
             showWheel(sticky: true)
         case "apps":

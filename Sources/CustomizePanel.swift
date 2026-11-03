@@ -26,7 +26,7 @@ final class CustomizePanel: NSWindowController {
         let frame = NSRect(x: 0, y: 0, width: 380, height: 640)
         webView = WKWebView(frame: frame, configuration: cfg)
         let win = NSWindow(contentRect: frame,
-                           styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                            backing: .buffered, defer: false)
         win.title = "Customize"
         win.level = .floating
@@ -34,6 +34,7 @@ final class CustomizePanel: NSWindowController {
         win.titlebarAppearsTransparent = true
         win.titleVisibility = .hidden
         win.minSize = NSSize(width: 300, height: 380)
+        win.isMovableByWindowBackground = true
         win.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         let container = NSView(frame: frame)
         effect.frame = frame
