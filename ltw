@@ -14,6 +14,8 @@
 #   ./ltw awake [on|off]      keep the Mac awake (caffeinate) / let it sleep again
 #   ./ltw vol <app> <percent> per-app volume (bundle id or app name), 0-200, 100 = untouched
 #   ./ltw snapshot [out.png]  save the current frame (default: ~/Pictures/Ltw Wallpaper)
+#   ./ltw wheel               open the window wheel at the cursor (⌃⌥W held does the same)
+#   ./ltw window <layout>     snap the front window: left right top bottom maximize center nextDisplay minimize restore
 cd "$(dirname "$0")"
 # Prefer the installed copy (./run.sh puts it there) so only one app ever runs.
 APP=/Applications/LtwWallpaper.app
@@ -28,7 +30,8 @@ case "$1" in
   dock)     open -a "$APP" "ltw://dock?key=$(enc "$2")&value=$(enc "$3")" ;;
   awake)    v=true; [ "$2" = off ] && v=false; open -a "$APP" "ltw://appset?key=keepAwake&value=$v" ;;
   vol)      open -a "$APP" "ltw://vol?key=$(enc "$2")&value=$(enc "$3")" ;;
-  next|sync|customize|reset|pause) open -a "$APP" "ltw://$1" ;;
+  window)   open -a "$APP" "ltw://window/$(enc "$2")" ;;
+  next|sync|customize|reset|pause|wheel) open -a "$APP" "ltw://$1" ;;
   version)  defaults read "$APP/Contents/Info" CFBundleShortVersionString ;;
-  *) sed -n '2,17p' "$0"; exit 1 ;;
+  *) sed -n '2,19p' "$0"; exit 1 ;;
 esac

@@ -79,6 +79,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
     var statItems: [NSMenuItem] = []
     var rotateTimer: Timer?
     let hotkeys = HotKeys()
+    let windowManager = WindowManager()
+    lazy var wheel = RadialMenu(manager: windowManager)
     var thumbWork: DispatchWorkItem?
     var panel: CustomizePanel?
     lazy var store = SettingsStore(dir: appSupport.appendingPathComponent("settings", isDirectory: true))
@@ -171,7 +173,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
         hotkeys.register(id: 3, keyCode: UInt32(kVK_ANSI_K), modifiers: mods) { [weak self] in self?.toggleKeepAwake() }
         hotkeys.register(id: 4, keyCode: UInt32(kVK_ANSI_M), modifiers: mods) { [weak self] in self?.openMixer() }
         hotkeys.register(id: 5, keyCode: UInt32(kVK_ANSI_C), modifiers: mods) { [weak self] in self?.toggleCustomize() }
+        if settings.bool("wheel") {
+            hotkeys.register(id: 6, keyCode: UInt32(kVK_ANSI_W), modifiers: mods,
+                             released: { [weak self] in self?.wheel.released() }) { [weak self] in self?.showWheel(sticky: false) }
+        }
     }
+
+    // MARK: Window wheel
+
+    func applyWheelLook() {
+        wheel.look.accent = NSColor(hex: settings.string("panelAccent")) ?? wheel.look.accent
+        wheel.look.radius = CGFloat(settings.double("wheelSize"))
+        wheel.look.dim = CGFloat(settings.double("wheelDim"))
+        windowManager.gap = CGFloat(settings.double("wheelGap"))
+        wheel.onSelect = { [weak self] layout, target in
+            guard let self = self else { return }
+            let ok = self.windowManager.apply(layout, to: target)
+            log.notice("wheel: \(layout.rawValue) → \(target?.app.localizedName ?? "none") \(ok ? "ok" : "failed")")
+        }
+    }
+
+    func showWheel(sticky: Bool) {
+        applyWheelLook()
+        wheel.show(sticky: sticky)
+    }
+
+    @objc func wheelFromMenu() { showWheel(sticky: true) }
+
+    @objc func windowAction(_ sender: NSMenuItem) {
+        guard let layout = WindowLayout(rawValue: sender.representedObject as? String ?? "") else { return }
+        applyWheelLook()
+        windowManager.apply(layout)
+    }
+
+    @objc func allowWindowManagement() { WindowManager.requestTrust() }
 
     var thumbsDir: URL { scenesDir.appendingPathComponent("_thumbs", isDirectory: true) }
 
@@ -694,7 +729,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
             restartRefreshTimer()
         case "rotateEvery", "rotateShuffle":
             restartRotateTimer()
-        case "hotkeys":
+        case "hotkeys", "wheel":
             applyHotkeys()
         case "batterySaver":
             power.saver = PowerMonitor.Saver(rawValue: settings.string("batterySaver")) ?? .auto
@@ -809,6 +844,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
         add(sys, "Sleep Display", #selector(sleepDisplay), "", "display")
         system.submenu = sys
         menu.addItem(system)
+        let window = NSMenuItem(title: "Window", action: nil, keyEquivalent: "")
+        window.image = symbol("circle.grid.cross")
+        let win = NSMenu()
+        let wheelItem = add(win, "Window Wheel…", #selector(wheelFromMenu), "w", "circle.grid.cross")
+        wheelItem.toolTip = "Hold ⌃⌥W anywhere, move toward a layout, let go."
+        win.addItem(.separator())
+        for layout in [WindowLayout.left, .right, .top, .bottom, .maximize, .center, .nextDisplay, .minimize, .restore] {
+            let item = NSMenuItem(title: layout.label, action: #selector(windowAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = layout.rawValue
+            win.addItem(item)
+        }
+        if !WindowManager.trusted {
+            win.addItem(.separator())
+            add(win, "Allow Window Management…", #selector(allowWindowManagement), "", "lock.open")
+        }
+        window.submenu = win
+        menu.addItem(window)
         // Everything a casual user never needs lives under Advanced; battery saver and the menu bar tint are in Customize → App.
         let advanced = NSMenuItem(title: "Advanced", action: nil, keyEquivalent: "")
         advanced.image = symbol("ellipsis.circle")
@@ -899,6 +952,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, WKNavi
             if let p = arg("path"), !p.isEmpty { snapshot(to: URL(fileURLWithPath: p)) } else { saveSnapshot() }
         case "customize":
             customize()
+        case "wheel":
+            showWheel(sticky: true)
+        case "window":
+            let name = url.pathComponents.dropFirst().first ?? ""
+            if let layout = WindowLayout(rawValue: name) { applyWheelLook(); windowManager.apply(layout) }
         case "set":
             guard let c = current, let key = arg("key"), let raw = arg("value"),
                   let data = raw.data(using: .utf8),

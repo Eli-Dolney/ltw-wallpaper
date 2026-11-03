@@ -4,66 +4,400 @@
 <meta charset="utf-8">
 <title>Clock</title>
 <script src="_ltw.js"></script>
+<script src="_gl.js"></script>
+<script src="_bg.js"></script>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg, #0c0a08); color: var(--fg, #f3e9e2);
-               font-family: -apple-system, "Helvetica Neue", sans-serif; }
-  #blob { position: absolute; inset: -20%; filter: blur(90px); opacity: var(--glow, 0.55);
-          background: radial-gradient(circle at 30% 40%, var(--c1, #d97757) 0, transparent 35%),
-                      radial-gradient(circle at 70% 65%, var(--c2, #3b5a9a) 0, transparent 40%);
-          animation: drift 40s ease-in-out infinite alternate; }
-  @keyframes drift { from { transform: translate(-4%, -3%) rotate(0deg); } to { transform: translate(4%, 3%) rotate(8deg); } }
-  #wrap { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-  #time { font-size: calc(var(--size, 16) * 1vw); font-weight: var(--weight, 200); letter-spacing: -0.03em; line-height: 1;
-          font-variant-numeric: tabular-nums; }
-  #time small { font-size: 0.35em; font-weight: 300; opacity: 0.7; margin-left: 0.15em; }
-  #date { margin-top: 0.6em; font-size: clamp(16px, 2.2vw, 36px); font-weight: 300; letter-spacing: 0.22em;
-          text-transform: uppercase; opacity: 0.75; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0c0a08; color: var(--fg, #f3e9e2);
+               font-family: var(--font, -apple-system, "Helvetica Neue", sans-serif); }
+  #bgwrap, #bgwrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #dim { position: absolute; inset: 0; background: #000; opacity: var(--dim, 0); pointer-events: none; }
+  #clock { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+           padding: 5vh 5vw; box-sizing: border-box; }
+  #clock.pos-top { justify-content: flex-start; }      #clock.pos-bottom { justify-content: flex-end; }
+  #clock.pos-top-left { justify-content: flex-start; align-items: flex-start; }
+  #clock.pos-top-right { justify-content: flex-start; align-items: flex-end; }
+  #clock.pos-bottom-left { justify-content: flex-end; align-items: flex-start; }
+  #clock.pos-bottom-right { justify-content: flex-end; align-items: flex-end; }
+  #face { display: flex; flex-direction: column; align-items: center; }
+  .pos-top-left #face, .pos-bottom-left #face { align-items: flex-start; }
+  .pos-top-right #face, .pos-bottom-right #face { align-items: flex-end; }
+  .time { font-size: calc(var(--size, 16) * 1vw); font-weight: var(--weight, 200); letter-spacing: -0.03em; line-height: 1;
+          font-variant-numeric: tabular-nums; white-space: nowrap; text-shadow: 0 2px 24px rgba(0,0,0,0.35); }
+  .time small { font-size: 0.35em; font-weight: 300; opacity: 0.7; margin-left: 0.15em; }
+  .date { margin-top: 0.6em; font-size: clamp(14px, calc(var(--size, 16) * 0.14vw), 40px); font-weight: 300; letter-spacing: 0.22em;
+          text-transform: uppercase; opacity: 0.75; white-space: nowrap; }
   #note { position: absolute; bottom: 7vh; left: 50%; transform: translateX(-50%); white-space: nowrap;
           font-size: 14px; letter-spacing: 0.3em; opacity: 0.35; text-transform: uppercase; }
+  /* neon */
+  .style-neon .time { color: #fff; font-weight: var(--weight, 300);
+    text-shadow: 0 0 6px #fff, 0 0 14px var(--accent), 0 0 30px var(--accent), 0 0 60px var(--accent), 0 0 100px var(--accent);
+    animation: flicker 7s linear infinite; }
+  .style-neon .date { color: var(--accent); text-shadow: 0 0 8px var(--accent), 0 0 20px var(--accent); opacity: 0.9; }
+  @keyframes flicker { 0%, 100% { opacity: 1; } 92% { opacity: 1; } 93% { opacity: 0.75; } 94% { opacity: 1; } 97% { opacity: 0.85; } 98% { opacity: 1; } }
+  /* minimal */
+  .style-minimal .time { font-size: calc(var(--size, 16) * 0.4vw); font-weight: 100; letter-spacing: 0.04em; }
+  .style-minimal .date { font-size: clamp(11px, calc(var(--size, 16) * 0.08vw), 20px); letter-spacing: 0.35em; margin-top: 0.9em; }
+  /* flip */
+  .flipwrap { display: flex; align-items: center; gap: 0.08em; font-size: calc(var(--size, 16) * 1vw); font-weight: var(--weight, 400);
+              line-height: 1; font-variant-numeric: tabular-nums; }
+  .flip { position: relative; width: 0.74em; height: 1.1em; perspective: 500px; }
+  .flip .half, .flip .flap { position: absolute; left: 0; width: 100%; height: 50%; overflow: hidden; background: var(--card, #1a1816);
+                             box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05); }
+  .flip .half span, .flip .flap span { display: block; height: 1.1em; line-height: 1.1em; text-align: center; }
+  .flip .top { top: 0; border-radius: 0.08em 0.08em 0 0; }
+  .flip .bottom { bottom: 0; border-radius: 0 0 0.08em 0.08em; }
+  .flip .bottom span, .flip .flap.b span { transform: translateY(-50%); }
+  .flip .flap { backface-visibility: hidden; }
+  .flip .flap.t { top: 0; border-radius: 0.08em 0.08em 0 0; transform-origin: bottom; animation: fold 0.32s ease-in forwards; }
+  .flip .flap.b { bottom: 0; border-radius: 0 0 0.08em 0.08em; transform-origin: top; transform: rotateX(90deg); animation: unfold 0.32s 0.32s ease-out forwards; }
+  .flip::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(0,0,0,0.55); z-index: 3; }
+  @keyframes fold { to { transform: rotateX(-90deg); } }
+  @keyframes unfold { to { transform: rotateX(0deg); } }
+  .flipwrap .colon { width: 0.3em; text-align: center; opacity: 0.6; font-weight: 300; }
+  .flipwrap .ampm { font-size: 0.3em; opacity: 0.7; margin-left: 0.3em; align-self: flex-end; }
+  /* analog + ring */
+  svg.face { width: min(calc(var(--size, 16) * 2.2vw), 72vmin); height: min(calc(var(--size, 16) * 2.2vw), 72vmin); overflow: visible; }
+  .ringtime { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .ringtime .time { font-size: min(calc(var(--size, 16) * 0.34vw), 11vmin); }
+  .ringtime .date { margin-top: 0.4em; font-size: clamp(11px, calc(var(--size, 16) * 0.09vw), 22px); }
+  #ringwrap { position: relative; }
+  /* word clock */
+  .words { display: grid; grid-template-columns: repeat(11, 1fr); gap: 0.1em 0.25em; font-size: min(calc(var(--size, 16) * 0.42vw), 6vh);
+           font-weight: var(--weight, 300); letter-spacing: 0.1em; font-family: var(--font, ui-monospace, Menlo, monospace); }
+  .words span { opacity: 0.14; text-align: center; transition: opacity 0.6s, color 0.6s, text-shadow 0.6s; }
+  .words span.on { opacity: 1; color: var(--accent); text-shadow: 0 0 18px var(--accent); }
+  .dots { display: flex; gap: 0.4em; margin-top: 0.9em; }
+  .dots i { width: 0.5em; height: 0.5em; border-radius: 50%; background: var(--fg); opacity: 0.14; transition: opacity 0.6s; }
+  .dots i.on { opacity: 1; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+  /* seven-segment */
+  canvas.seg { display: block; }
 </style>
 </head>
 <body>
-<div id="blob"></div>
-<div id="wrap"><div id="time"></div><div id="date"></div></div>
+<div id="bgwrap"></div>
+<div id="dim"></div>
+<div id="clock"><div id="face"></div></div>
 <div id="note"></div>
 <script>
 // ---------------- tweak me ----------------
-const CONFIG = { hour24: false, seconds: false, note: 'make something today', size: 16, weight: 200,
-                 bg: '#0c0a08', fg: '#f3e9e2', glow1: '#d97757', glow2: '#3b5a9a', glowStrength: 0.55 };
+const CONFIG = {
+  style: 'digital',          // digital | neon | minimal | seven | flip | analog | ring | word
+  background: 'flow',        // see BG.list in _bg.js
+  bgColors: ['#0c0a08', '#2a1b3d', '#3b5a9a', '#d97757'],
+  bgSpeed: 1, bgIntensity: 1, bgScale: 0.5,
+  fg: '#f3e9e2', accent: '#d97757',
+  font: 'system', size: 16, weight: '200',
+  hour24: false, seconds: false, showDate: true, dateFormat: 'long', note: 'make something today',
+  numerals: true,            // analog face numerals
+  position: 'center', dim: 0.15, fps: 30,
+};
+const FONTS = { system: '-apple-system, "Helvetica Neue", sans-serif', monospace: 'ui-monospace, "SF Mono", Menlo, monospace',
+                serif: 'ui-serif, "New York", Georgia, serif', rounded: 'ui-rounded, -apple-system, sans-serif',
+                condensed: '"Avenir Next Condensed", "Helvetica Neue", sans-serif' };
 const SCHEMA = { groups: [
   { label: 'Clock', fields: [
+    { key: 'style', type: 'select', label: 'Style', options: [
+      { value: 'digital', label: 'Digital' }, { value: 'neon', label: 'Neon' }, { value: 'minimal', label: 'Minimal' },
+      { value: 'seven', label: 'Seven-segment' }, { value: 'flip', label: 'Flip clock' }, { value: 'analog', label: 'Analog' },
+      { value: 'ring', label: 'Rings' }, { value: 'word', label: 'Word clock' } ] },
     { key: 'hour24', type: 'toggle', label: '24-hour' }, { key: 'seconds', type: 'toggle', label: 'Show seconds' },
-    { key: 'size', type: 'range', label: 'Size', min: 6, max: 30, step: 0.5 },
-    { key: 'weight', type: 'select', label: 'Weight', options: ['100', '200', '300', '400', '600', '800'] },
+    { key: 'showDate', type: 'toggle', label: 'Show date' },
+    { key: 'dateFormat', type: 'select', label: 'Date format', options: [
+      { value: 'long', label: 'Monday, November 3' }, { value: 'short', label: 'Mon, Nov 3' }, { value: 'numeric', label: '11/3/2026' },
+      { value: 'iso', label: '2026-11-03' }, { value: 'day', label: 'Monday' } ] },
+    { key: 'numerals', type: 'toggle', label: 'Numerals on the dial' },
     { key: 'note', type: 'text', label: 'Bottom note' },
   ]},
+  { label: 'Style', fields: [
+    { key: 'font', type: 'select', label: 'Font', options: [
+      { value: 'system', label: 'System' }, { value: 'monospace', label: 'Monospace' }, { value: 'serif', label: 'Serif' },
+      { value: 'rounded', label: 'Rounded' }, { value: 'condensed', label: 'Condensed' } ] },
+    { key: 'size', type: 'range', label: 'Size', min: 6, max: 30, step: 0.5 },
+    { key: 'weight', type: 'select', label: 'Weight', options: ['100', '200', '300', '400', '600', '800'] },
+    { key: 'position', type: 'select', label: 'Position', options: [
+      { value: 'center', label: 'Center' }, { value: 'top', label: 'Top' }, { value: 'bottom', label: 'Bottom' },
+      { value: 'top-left', label: 'Top left' }, { value: 'top-right', label: 'Top right' },
+      { value: 'bottom-left', label: 'Bottom left' }, { value: 'bottom-right', label: 'Bottom right' } ] },
+    { key: 'dim', type: 'range', label: 'Darken background', min: 0, max: 0.8, step: 0.05 },
+  ]},
+  { label: 'Background', fields: [
+    { key: 'background', type: 'select', label: 'Animation', options: BG.list.map(b => ({ value: b.id, label: b.label })) },
+    { key: 'bgSpeed', type: 'range', label: 'Speed', min: 0, max: 3, step: 0.05 },
+    { key: 'bgIntensity', type: 'range', label: 'Intensity', min: 0, max: 2, step: 0.05 },
+  ]},
   { label: 'Colors', fields: [
-    { key: 'bg', type: 'color', label: 'Background' }, { key: 'fg', type: 'color', label: 'Text' },
-    { key: 'glow1', type: 'color', label: 'Glow 1' }, { key: 'glow2', type: 'color', label: 'Glow 2' },
-    { key: 'glowStrength', type: 'range', label: 'Glow strength', min: 0, max: 1, step: 0.05 },
+    { key: 'bgColors', type: 'colors', label: 'Background palette' },
+    { key: 'fg', type: 'color', label: 'Text' }, { key: 'accent', type: 'color', label: 'Accent' },
+  ]},
+  { label: 'Performance', fields: [
+    { key: 'bgScale', type: 'range', label: 'Background render scale', min: 0.2, max: 1, step: 0.05 },
+    { key: 'fps', type: 'range', label: 'Frame rate', min: 5, max: 60, step: 1 },
   ]},
 ]};
-LTW.setup(CONFIG, SCHEMA, { change(k) { applyLook(); if (k === 'seconds') restartTick(); tick(); } });
+LTW.setup(CONFIG, SCHEMA, { change(k, v) {
+  if (k === 'style') buildFace();
+  else if (k === 'background') buildBackground();
+  else if (k === 'bgColors') bg && bg.setColors(CONFIG.bgColors);
+  else if (k === 'bgIntensity' && bg && bg.resize) { bgOpts.intensity = v; if (['dust', 'bokeh', 'stars', 'mesh'].includes(CONFIG.background)) bg.resize(); }
+  else if (k === 'bgSpeed') bgOpts.speed = v;
+  else if (k === 'bgScale') { bgOpts.scale = v; bg && bg.resize(); }
+  else if (['hour24', 'seconds', 'showDate', 'dateFormat', 'numerals'].includes(k)) buildFace();
+  else { applyLook(); if (k === 'size' || k === 'font' || k === 'weight') { if (CONFIG.style === 'seven') drawSeven(true); } }
+  tick(true);
+} });
 // ------------------------------------------
+const face = document.getElementById('face');
+const clockEl = document.getElementById('clock');
+
 function applyLook() {
   const r = document.documentElement.style;
-  r.setProperty('--bg', CONFIG.bg); r.setProperty('--fg', CONFIG.fg);
-  r.setProperty('--c1', CONFIG.glow1); r.setProperty('--c2', CONFIG.glow2); r.setProperty('--glow', CONFIG.glowStrength);
+  r.setProperty('--fg', CONFIG.fg); r.setProperty('--accent', CONFIG.accent);
   r.setProperty('--size', CONFIG.size); r.setProperty('--weight', CONFIG.weight);
+  r.setProperty('--font', FONTS[CONFIG.font] || FONTS.system); r.setProperty('--dim', CONFIG.dim);
+  r.setProperty('--card', shade(CONFIG.bgColors[0] || '#111', 0.6));
   document.getElementById('note').textContent = CONFIG.note;
+  clockEl.className = 'pos-' + CONFIG.position + ' style-' + CONFIG.style;
+  document.body.style.background = CONFIG.bgColors[0] || '#000';
 }
-function tick() {
-  const d = new Date();
+function shade(hex, k) { const s = hex.replace('#', ''); const v = [0, 2, 4].map(i => Math.round((parseInt(s.slice(i, i + 2), 16) || 0) * k + 20)); return `rgb(${v.join(',')})`; }
+
+// ---------- background ----------
+let bg = null;
+const bgOpts = { colors: CONFIG.bgColors, speed: CONFIG.bgSpeed, intensity: CONFIG.bgIntensity, scale: CONFIG.bgScale };
+function buildBackground() {
+  if (bg) { bg.destroy(); bg = null; }
+  const wrap = document.getElementById('bgwrap'); wrap.innerHTML = '';
+  const c = document.createElement('canvas'); wrap.appendChild(c);
+  bgOpts.colors = CONFIG.bgColors; bgOpts.speed = CONFIG.bgSpeed; bgOpts.intensity = CONFIG.bgIntensity; bgOpts.scale = CONFIG.bgScale;
+  bg = BG.create(CONFIG.background, c, bgOpts);
+}
+addEventListener('resize', () => { bg && bg.resize(); if (CONFIG.style === 'seven') drawSeven(true); });
+
+// ---------- time helpers ----------
+function parts(d) {
   let h = d.getHours(), ampm = '';
   if (!CONFIG.hour24) { ampm = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; }
-  const mm = String(d.getMinutes()).padStart(2, '0'), ss = String(d.getSeconds()).padStart(2, '0');
-  document.getElementById('time').innerHTML =
-    (CONFIG.hour24 ? String(h).padStart(2, '0') : h) + ':' + mm + (CONFIG.seconds ? ':' + ss : '') + (ampm ? `<small>${ampm}</small>` : '');
-  document.getElementById('date').textContent = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  const hs = CONFIG.hour24 ? String(h).padStart(2, '0') : String(h);
+  return { h, hs, mm: String(d.getMinutes()).padStart(2, '0'), ss: String(d.getSeconds()).padStart(2, '0'), ampm };
 }
-let timer = null;
-function restartTick() { clearInterval(timer); timer = setInterval(tick, CONFIG.seconds ? 1000 : 5000); }
-applyLook(); tick(); restartTick();
+function timeString(d) { const p = parts(d); return p.hs + ':' + p.mm + (CONFIG.seconds ? ':' + p.ss : ''); }
+function dateString(d) {
+  switch (CONFIG.dateFormat) {
+    case 'short': return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    case 'numeric': return d.toLocaleDateString();
+    case 'iso': return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    case 'day': return d.toLocaleDateString(undefined, { weekday: 'long' });
+    default: return d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  }
+}
+
+// ---------- faces ----------
+let lastText = '', lastDate = '', flipDigits = [], segCanvas = null, hands = null, rings = null, wordEls = null;
+function buildFace() {
+  applyLook();
+  face.innerHTML = ''; lastText = ''; lastDate = ''; flipDigits = []; segCanvas = null; hands = null; rings = null; wordEls = null;
+  const s = CONFIG.style;
+  if (s === 'digital' || s === 'neon' || s === 'minimal') {
+    face.innerHTML = '<div class="time"></div>' + (CONFIG.showDate ? '<div class="date"></div>' : '');
+  } else if (s === 'flip') {
+    buildFlip();
+  } else if (s === 'seven') {
+    segCanvas = document.createElement('canvas'); segCanvas.className = 'seg'; face.appendChild(segCanvas);
+    if (CONFIG.showDate) face.insertAdjacentHTML('beforeend', '<div class="date"></div>');
+  } else if (s === 'analog') {
+    buildAnalog();
+  } else if (s === 'ring') {
+    buildRing();
+  } else if (s === 'word') {
+    buildWord();
+  }
+  tick(true);
+}
+
+// digital / neon / minimal / dates
+function setText(sel, txt) { const el = face.querySelector(sel); if (el && el.textContent !== txt) el.textContent = txt; }
+
+// flip
+function buildFlip() {
+  const p = parts(new Date());
+  const digits = (CONFIG.hour24 ? p.hs : p.hs.padStart(2, ' ')) + p.mm + (CONFIG.seconds ? p.ss : '');
+  const wrap = document.createElement('div'); wrap.className = 'flipwrap';
+  const n = digits.length;
+  for (let i = 0; i < n; i++) {
+    if (i === 2 || i === 4) { const c = document.createElement('div'); c.className = 'colon'; c.textContent = ':'; wrap.appendChild(c); }
+    const d = document.createElement('div'); d.className = 'flip';
+    d.innerHTML = '<div class="half top"><span></span></div><div class="half bottom"><span></span></div>';
+    wrap.appendChild(d); flipDigits.push({ el: d, cur: null });
+  }
+  if (!CONFIG.hour24) { const a = document.createElement('div'); a.className = 'ampm'; wrap.appendChild(a); }
+  face.appendChild(wrap);
+  if (CONFIG.showDate) face.insertAdjacentHTML('beforeend', '<div class="date"></div>');
+}
+function flipTo(cell, ch) {
+  if (cell.cur === ch) return;
+  const old = cell.cur; cell.cur = ch;
+  cell.el.style.visibility = ch === ' ' ? 'hidden' : '';
+  const top = cell.el.querySelector('.top span'), bottom = cell.el.querySelector('.bottom span');
+  if (old == null) { top.textContent = ch; bottom.textContent = ch; return; }
+  cell.el.querySelectorAll('.flap').forEach(f => f.remove());
+  top.textContent = ch;
+  const ft = document.createElement('div'); ft.className = 'flap t'; ft.innerHTML = '<span>' + old + '</span>';
+  const fb = document.createElement('div'); fb.className = 'flap b'; fb.innerHTML = '<span>' + ch + '</span>';
+  cell.el.appendChild(ft); cell.el.appendChild(fb);
+  setTimeout(() => { bottom.textContent = ch; ft.remove(); fb.remove(); }, 700);
+}
+
+// seven-segment: canvas, redrawn once a second
+const SEG = { '0': [1,1,1,1,1,1,0], '1': [0,1,1,0,0,0,0], '2': [1,1,0,1,1,0,1], '3': [1,1,1,1,0,0,1], '4': [0,1,1,0,0,1,1],
+              '5': [1,0,1,1,0,1,1], '6': [1,0,1,1,1,1,1], '7': [1,1,1,0,0,0,0], '8': [1,1,1,1,1,1,1], '9': [1,1,1,1,0,1,1], ' ': [0,0,0,0,0,0,0] };
+function drawSeven(force) {
+  if (!segCanvas) return;
+  const d = new Date(), p = parts(d);
+  const text = (CONFIG.hour24 ? p.hs : p.hs.padStart(2, ' ')) + ':' + p.mm + (CONFIG.seconds ? ':' + p.ss : '');
+  if (!force && text === lastText) return; lastText = text;
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const H = Math.min(innerHeight * 0.6, innerWidth * CONFIG.size / 100 * 1.1), W = H * 0.62;   // digit box
+  const thick = H * 0.11, gap = H * 0.16, colonW = H * 0.22;
+  const nDig = text.replace(/:/g, '').length, nCol = (text.match(/:/g) || []).length;
+  const totalW = nDig * W + (nDig - 1) * gap * 0.4 + nCol * colonW + (CONFIG.hour24 ? 0 : H * 0.35);
+  segCanvas.width = Math.ceil(totalW * dpr); segCanvas.height = Math.ceil((H + thick) * dpr);
+  segCanvas.style.width = Math.ceil(totalW) + 'px'; segCanvas.style.height = Math.ceil(H + thick) + 'px';
+  const x = segCanvas.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const on = CONFIG.accent, off = hexA(CONFIG.fg, 0.07);
+  let cx = 0;
+  const seg = (x0, y0, horiz, lit) => {
+    const L = horiz ? W - thick * 1.2 : H / 2 - thick * 1.2, t = thick / 2;
+    x.save(); x.translate(x0, y0); if (!horiz) x.rotate(Math.PI / 2);
+    x.beginPath(); x.moveTo(-L / 2, 0); x.lineTo(-L / 2 + t, -t); x.lineTo(L / 2 - t, -t); x.lineTo(L / 2, 0); x.lineTo(L / 2 - t, t); x.lineTo(-L / 2 + t, t); x.closePath();
+    x.fillStyle = lit ? on : off; x.fill(); x.restore();
+  };
+  const glow = hexA(CONFIG.accent, 0.12);
+  for (const ch of text) {
+    if (ch === ':') {
+      const blink = CONFIG.seconds || d.getSeconds() % 2 === 0;
+      x.fillStyle = blink ? on : off;
+      for (const yy of [H * 0.3, H * 0.7]) { x.beginPath(); x.arc(cx + colonW / 2, yy + thick / 2, thick * 0.45, 0, 6.3); x.fill(); }
+      cx += colonW; continue;
+    }
+    if (ch === ' ') { cx += W + gap * 0.4; continue; }
+    const s = SEG[ch] || SEG[' '], mx = cx + W / 2, top = thick / 2, mid = top + H / 2, bot = top + H;
+    // soft glow pad behind lit digits (one rect, no shadowBlur)
+    x.fillStyle = glow; x.fillRect(cx - thick, 0, W + thick * 2, H + thick);
+    seg(mx, top, true, s[0]); seg(cx + W - thick / 2, top + H / 4, false, s[1]); seg(cx + W - thick / 2, mid + H / 4, false, s[2]);
+    seg(mx, bot, true, s[3]); seg(cx + thick / 2, mid + H / 4, false, s[4]); seg(cx + thick / 2, top + H / 4, false, s[5]); seg(mx, mid, true, s[6]);
+    cx += W + gap * 0.4;
+  }
+  if (!CONFIG.hour24) { x.fillStyle = on; x.font = `600 ${H * 0.16}px ${FONTS.system}`; x.textBaseline = 'bottom'; x.fillText(p.ampm, cx + H * 0.05, H + thick / 2); }
+}
+function hexA(hex, a) { const s = hex.replace('#', ''); return `rgba(${[0, 2, 4].map(i => parseInt(s.slice(i, i + 2), 16) || 0).join(',')},${a})`; }
+
+// analog
+function buildAnalog() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg'); svg.setAttribute('viewBox', '-110 -110 220 220'); svg.setAttribute('class', 'face');
+  let s = `<circle r="100" fill="rgba(0,0,0,0.25)" stroke="${CONFIG.fg}" stroke-opacity="0.35" stroke-width="1.5"/>`;
+  for (let i = 0; i < 60; i++) {
+    const a = i * 6 * Math.PI / 180, big = i % 5 === 0, r1 = big ? 88 : 93;
+    s += `<line x1="${(Math.sin(a) * r1).toFixed(2)}" y1="${(-Math.cos(a) * r1).toFixed(2)}" x2="${(Math.sin(a) * 97).toFixed(2)}" y2="${(-Math.cos(a) * 97).toFixed(2)}" stroke="${CONFIG.fg}" stroke-opacity="${big ? 0.9 : 0.35}" stroke-width="${big ? 2.5 : 1}" stroke-linecap="round"/>`;
+  }
+  if (CONFIG.numerals) for (let i = 1; i <= 12; i++) {
+    const a = i * 30 * Math.PI / 180;
+    s += `<text x="${(Math.sin(a) * 74).toFixed(2)}" y="${(-Math.cos(a) * 74).toFixed(2)}" fill="${CONFIG.fg}" font-size="14" font-weight="${CONFIG.weight}" text-anchor="middle" dominant-baseline="central" font-family="${FONTS[CONFIG.font] || FONTS.system}">${i}</text>`;
+  }
+  s += `<line id="hh" y1="12" y2="-52" stroke="${CONFIG.fg}" stroke-width="6" stroke-linecap="round"/>`;
+  s += `<line id="mh" y1="14" y2="-82" stroke="${CONFIG.fg}" stroke-width="3.5" stroke-linecap="round"/>`;
+  s += `<line id="sh" y1="20" y2="-90" stroke="${CONFIG.accent}" stroke-width="1.5" stroke-linecap="round" ${CONFIG.seconds ? '' : 'visibility="hidden"'}/>`;
+  s += `<circle r="4.5" fill="${CONFIG.accent}"/><circle r="1.6" fill="${CONFIG.bgColors[0]}"/>`;
+  svg.innerHTML = s; face.appendChild(svg);
+  if (CONFIG.showDate) face.insertAdjacentHTML('beforeend', '<div class="date"></div>');
+  hands = { h: svg.querySelector('#hh'), m: svg.querySelector('#mh'), s: svg.querySelector('#sh') };
+}
+function updateHands(d) {
+  const ms = d.getMilliseconds() / 1000, sec = d.getSeconds() + ms, min = d.getMinutes() + sec / 60, hr = (d.getHours() % 12) + min / 60;
+  hands.h.setAttribute('transform', `rotate(${hr * 30})`);
+  hands.m.setAttribute('transform', `rotate(${min * 6})`);
+  if (CONFIG.seconds) hands.s.setAttribute('transform', `rotate(${sec * 6})`);
+}
+
+// rings
+function buildRing() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const wrap = document.createElement('div'); wrap.id = 'ringwrap';
+  const svg = document.createElementNS(ns, 'svg'); svg.setAttribute('viewBox', '-110 -110 220 220'); svg.setAttribute('class', 'face');
+  const ring = (id, r, color, w, op) => `<circle r="${r}" fill="none" stroke="${color}" stroke-opacity="0.12" stroke-width="${w}"/>` +
+    `<circle id="${id}" r="${r}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linecap="round" transform="rotate(-90)" stroke-dasharray="${(2 * Math.PI * r).toFixed(2)}" stroke-dashoffset="${(2 * Math.PI * r).toFixed(2)}" opacity="${op}"/>`;
+  svg.innerHTML = ring('rh', 96, CONFIG.accent, 6, 1) + ring('rm', 82, CONFIG.fg, 4, 0.9) + (CONFIG.seconds ? ring('rs', 70, CONFIG.fg, 2, 0.6) : '');
+  wrap.appendChild(svg);
+  wrap.insertAdjacentHTML('beforeend', '<div class="ringtime"><div class="time"></div>' + (CONFIG.showDate ? '<div class="date"></div>' : '') + '</div>');
+  face.appendChild(wrap);
+  rings = { h: svg.querySelector('#rh'), m: svg.querySelector('#rm'), s: svg.querySelector('#rs') };
+}
+function updateRings(d) {
+  const ms = d.getMilliseconds() / 1000, sec = d.getSeconds() + ms, min = d.getMinutes() + sec / 60, hr = (d.getHours() % 12) + min / 60;
+  const set = (el, frac) => { if (!el) return; const c = parseFloat(el.getAttribute('stroke-dasharray')); el.setAttribute('stroke-dashoffset', (c * (1 - frac)).toFixed(2)); };
+  set(rings.h, hr / 12); set(rings.m, min / 60); set(rings.s, sec / 60);
+}
+
+// word clock
+const GRID = ['ITLISASAMPM', 'ACQUARTERDC', 'TWENTYFIVEX', 'HALFSTENFTO', 'PASTERUNINE', 'ONESIXTHREE', 'FOURFIVETWO', 'EIGHTELEVEN', 'SEVENTWELVE', 'TENSEOCLOCK'];
+const W = { IT: [0, 0, 2], IS: [0, 3, 2], AM: [0, 7, 2], PM: [0, 9, 2], A: [1, 0, 1], QUARTER: [1, 2, 7], TWENTY: [2, 0, 6], FIVE: [2, 6, 4],
+            HALF: [3, 0, 4], TEN: [3, 5, 3], TO: [3, 9, 2], PAST: [4, 0, 4], NINE: [4, 7, 4], ONE: [5, 0, 3], SIX: [5, 3, 3], THREE: [5, 6, 5],
+            FOUR: [6, 0, 4], H5: [6, 4, 4], TWO: [6, 8, 3], EIGHT: [7, 0, 5], ELEVEN: [7, 5, 6], SEVEN: [8, 0, 5], TWELVE: [8, 5, 6], H10: [9, 0, 3], OCLOCK: [9, 5, 6] };
+const HOURS = ['TWELVE', 'ONE', 'TWO', 'THREE', 'FOUR', 'H5', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'H10', 'ELEVEN'];
+function buildWord() {
+  const g = document.createElement('div'); g.className = 'words';
+  wordEls = [];
+  GRID.forEach((row, r) => { wordEls.push([...row].map(ch => { const s = document.createElement('span'); s.textContent = ch; g.appendChild(s); return s; })); });
+  face.appendChild(g);
+  const dots = document.createElement('div'); dots.className = 'dots'; dots.innerHTML = '<i></i><i></i><i></i><i></i>'; face.appendChild(dots);
+  if (CONFIG.showDate) face.insertAdjacentHTML('beforeend', '<div class="date"></div>');
+}
+function updateWords(d) {
+  const key = d.getHours() + ':' + d.getMinutes(); if (key === lastText) return; lastText = key;
+  const m = d.getMinutes(), five = Math.floor(m / 5) * 5; let h = d.getHours();
+  const on = new Set(['IT', 'IS']);
+  if (five >= 35) h += 1;
+  if (!CONFIG.hour24) on.add(d.getHours() >= 12 ? 'PM' : 'AM');
+  const mw = { 0: ['OCLOCK'], 5: ['FIVE', 'PAST'], 10: ['TEN', 'PAST'], 15: ['A', 'QUARTER', 'PAST'], 20: ['TWENTY', 'PAST'], 25: ['TWENTY', 'FIVE', 'PAST'],
+               30: ['HALF', 'PAST'], 35: ['TWENTY', 'FIVE', 'TO'], 40: ['TWENTY', 'TO'], 45: ['A', 'QUARTER', 'TO'], 50: ['TEN', 'TO'], 55: ['FIVE', 'TO'] }[five];
+  mw.forEach(w => on.add(w)); on.add(HOURS[h % 12]);
+  const lit = new Set();
+  for (const w of on) { const [r, c, n] = W[w]; for (let i = 0; i < n; i++) lit.add(r * 11 + c + i); }
+  wordEls.forEach((row, r) => row.forEach((el, c) => el.classList.toggle('on', lit.has(r * 11 + c))));
+  face.querySelectorAll('.dots i').forEach((el, i) => el.classList.toggle('on', i < m % 5));
+}
+
+// ---------- tick (once a second) and frame (per fps) ----------
+function tick(force) {
+  const d = new Date(), s = CONFIG.style;
+  if (s === 'digital' || s === 'neon' || s === 'minimal' || s === 'ring') {
+    const p = parts(d), txt = timeString(d);
+    if (force || txt !== lastText) {
+      lastText = txt;
+      const el = face.querySelector('.time');
+      if (el) el.innerHTML = txt + (p.ampm ? `<small>${p.ampm}</small>` : '');
+    }
+  } else if (s === 'flip') {
+    const p = parts(d);
+    const digits = (CONFIG.hour24 ? p.hs : p.hs.padStart(2, ' ')) + p.mm + (CONFIG.seconds ? p.ss : '');
+    flipDigits.forEach((cell, i) => flipTo(cell, digits[i] || ' '));
+    const a = face.querySelector('.ampm'); if (a) a.textContent = p.ampm;
+  } else if (s === 'seven') {
+    drawSeven(force);
+  } else if (s === 'word') {
+    if (force) lastText = ''; updateWords(d);
+  }
+  if (CONFIG.showDate) { const ds = dateString(d); if (force || ds !== lastDate) { lastDate = ds; setText('.date', ds); } }
+}
+setInterval(tick, 1000);
+
+LTWLoop(() => CONFIG.fps, (now, dt) => {
+  if (bg) bg.draw(now, dt);
+  if (hands) updateHands(new Date());
+  if (rings) updateRings(new Date());
+});
+
+applyLook(); buildBackground(); buildFace();
 </script>
 </body>
 </html>

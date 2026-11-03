@@ -7,26 +7,31 @@ final class HotKeys {
     private var refs: [EventHotKeyRef] = []
     private var handler: EventHandlerRef?
     private var actions: [UInt32: () -> Void] = [:]
+    private var releases: [UInt32: () -> Void] = [:]
 
     init() {
-        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        var specs = [EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+                     EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))]
         InstallEventHandler(GetApplicationEventTarget(), { _, event, userData in
             guard let event = event, let userData = userData else { return noErr }
             var id = EventHotKeyID()
             GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
                               MemoryLayout<EventHotKeyID>.size, nil, &id)
-            Unmanaged<HotKeys>.fromOpaque(userData).takeUnretainedValue().actions[id.id]?()
+            let me = Unmanaged<HotKeys>.fromOpaque(userData).takeUnretainedValue()
+            if GetEventKind(event) == UInt32(kEventHotKeyReleased) { me.releases[id.id]?() } else { me.actions[id.id]?() }
             return noErr
-        }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), &handler)
+        }, 2, &specs, Unmanaged.passUnretained(self).toOpaque(), &handler)
     }
 
-    /// `modifiers` are Carbon flags (controlKey, optionKey, cmdKey, shiftKey).
-    func register(id: UInt32, keyCode: UInt32, modifiers: UInt32, _ action: @escaping () -> Void) {
+    /// `modifiers` are Carbon flags (controlKey, optionKey, cmdKey, shiftKey). `released` fires when the
+    /// combination is let go (hold-to-use shortcuts such as the window wheel).
+    func register(id: UInt32, keyCode: UInt32, modifiers: UInt32, released: (() -> Void)? = nil, _ action: @escaping () -> Void) {
         var ref: EventHotKeyRef?
         let hk = EventHotKeyID(signature: OSType(0x4C545721), id: id)   // 'LTW!'
         if RegisterEventHotKey(keyCode, modifiers, hk, GetApplicationEventTarget(), 0, &ref) == noErr, let r = ref {
             refs.append(r)
             actions[id] = action
+            releases[id] = released
         }
     }
 
@@ -34,6 +39,7 @@ final class HotKeys {
         for r in refs { UnregisterEventHotKey(r) }
         refs = []
         actions = [:]
+        releases = [:]
     }
 }
 

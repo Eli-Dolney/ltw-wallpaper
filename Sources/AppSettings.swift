@@ -43,6 +43,10 @@ final class AppSettings {
         "rotateShuffle": false,
         "audioReactive": true,
         "hotkeys": true,
+        "wheel": true,
+        "wheelSize": 160.0,
+        "wheelDim": 0.25,
+        "wheelGap": 0.0,
         "statsInMenu": true,
         "loginItem": false,
         "dockIcon": false,
@@ -93,8 +97,16 @@ final class AppSettings {
         ]],
         ["label": "Shortcuts", "fields": [
             ["key": "hotkeys", "type": "toggle", "label": "Global shortcuts"],
-            ["key": "_hk", "type": "note", "label": "⌃⌥N next scene · ⌃⌥P pause animation · ⌃⌥K keep awake · ⌃⌥M mixer · ⌃⌥C customize",
+            ["key": "_hk", "type": "note", "label": "⌃⌥N next scene · ⌃⌥P pause animation · ⌃⌥K keep awake · ⌃⌥M mixer · ⌃⌥C customize · ⌃⌥W window wheel",
              "showIf": ["key": "hotkeys", "is": true]],
+        ]],
+        ["label": "Window wheel", "fields": [
+            ["key": "wheel", "type": "toggle", "label": "Window wheel (⌃⌥W)"],
+            ["key": "_wheel", "type": "note", "label": "Hold ⌃⌥W, move the mouse toward a layout, let go: the front window snaps there. Tap ⌃⌥W to keep the wheel open and click. Needs Accessibility access once.",
+             "showIf": ["key": "wheel", "is": true]],
+            ["key": "wheelSize", "type": "range", "label": "Size", "min": 100, "max": 260, "step": 10, "showIf": ["key": "wheel", "is": true]],
+            ["key": "wheelDim", "type": "range", "label": "Dim the screen behind", "min": 0, "max": 0.6, "step": 0.05, "showIf": ["key": "wheel", "is": true]],
+            ["key": "wheelGap", "type": "range", "label": "Gap between windows (px)", "min": 0, "max": 40, "step": 2, "showIf": ["key": "wheel", "is": true]],
         ]],
         ["label": "Monitor", "fields": [
             ["key": "statsInMenu", "type": "toggle", "label": "Stats at the top of the menu"],

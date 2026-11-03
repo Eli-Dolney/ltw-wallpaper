@@ -51,7 +51,9 @@ apply live and are saved per scene in `~/Library/Application Support/LtwWallpape
   menu as **Keep Awake** (⌘K) and `./ltw awake on|off`.
 - **Scenes**: change the scene automatically every 15 min … daily, optionally shuffled.
 - **Shortcuts**: global hotkeys ⌃⌥N next scene, ⌃⌥P pause/resume animation, ⌃⌥K keep awake,
-  ⌃⌥M mixer, ⌃⌥C customize. They need no accessibility permission.
+  ⌃⌥M mixer, ⌃⌥C customize, ⌃⌥W window wheel. Only the wheel needs the Accessibility permission.
+- **Window wheel**: the GTA-style radial menu for windows (below). Size, how much to dim the screen
+  behind it, and a gap to leave between tiled windows.
 - **Customize window**: translucent blur or solid background, opacity, dark / light / match system,
   accent color, hide the window buttons for a clean bar (close with ⌘W or Esc), keep on top (off makes
   it an ordinary window other apps cover), hide when you click elsewhere. Customize… in the menu and
@@ -97,7 +99,8 @@ the Dock and need System Integrity Protection relaxed, which this app does not d
 
 The menu itself stays short: live stats, scenes, Customize…, Volume Mixer… (⌘M), Save Snapshot, Pause
 Animation (⌘P, freezes every scene), Keep Awake, a **System** submenu (Hide Desktop Icons, Toggle
-Dark Mode, Start Screen Saver, Sleep Display), an **Advanced** submenu (… plus Export / Import Settings as
+Dark Mode, Start Screen Saver, Sleep Display), a **Window** submenu (the wheel and its layouts as plain
+menu items), an **Advanced** submenu (… plus Export / Import Settings as
 one JSON file, Reload Scenes, Open Scenes Folder, Open Current Scene in Browser, Refresh Menu Bar Tint,
 Restore Original Wallpaper), About, and Quit. The Customize window remembers its tab and closes with Esc
 or ⌘W.
@@ -160,7 +163,12 @@ Included:
 - **visualizer** – a system-audio spectrum as bars, a ring or a wave, with afterglow and beat flashes. ♪
 - **topo** – topographic contour lines, computed on the GPU.
 - **constellation** – drifting particle network.
-- **clock** – big minimal time and date over a slow gradient.
+- **clock** – one scene, eight faces: Digital, Neon, Minimal, Seven-segment, Flip clock, Analog, Rings
+  and a Word clock, each over any of fourteen animated backgrounds (gradient flow, aurora, nebula,
+  liquid plasma, layered waves, hex grid, sunset sky, light streaks, drifting dust, bokeh, starfield,
+  geometric mesh, ripple rings, or a solid color). Pick the font, size, weight, position on screen,
+  12/24-hour, seconds, date format, a bottom note, the four-color background palette, speed and
+  intensity, and how much to darken the background under the clock.
 - **matrix** – the classic rain.
 - **slideshow** – crossfading Ken Burns slideshow of `scenes/images/`.
 - **Sample Photo.jpg** – a plain generated image, to show the image path works.
@@ -235,6 +243,12 @@ LTW.setup(CONFIG, SCHEMA, { rebuild: () => build(), change(key, value) { /* opti
   instead so the scene still moves.
 - `_gl.js` has a tiny helper for full-screen shader scenes (`GL(canvas, fragmentSource)` and the
   `LTWLoop(fps, fn)` frame gate) used by nebula, synthwave, rain and liquid.
+- `_bg.js` is the animated-background library behind the clock. Include `_ltw.js`, `_gl.js` and
+  `_bg.js`, then `const bg = BG.create('aurora', canvas, { colors: [...4 hex], speed: 1, intensity: 1,
+  scale: 0.5 })` and call `bg.draw(now, dt)` from your frame loop, `bg.resize()` on resize,
+  `bg.setColors(list)` when the palette changes and `bg.destroy()` before switching. `BG.list` gives
+  `{id, label}` pairs for a select field. A canvas can only hold one kind of context, so create a fresh
+  `<canvas>` each time you switch backgrounds.
 - Scenes can `fetch()` files next to them (that is how `.obj` models load).
 - Scenes also work when opened in a normal browser (menu → Open Current Scene in Browser) for devtools.
 
@@ -253,6 +267,22 @@ Tips that keep the fans quiet:
   and videos, and resumes when the desktop is visible again.
 - **Battery saver** (Customize → App) caps every scene at 15 fps. *Auto* follows macOS Low Power Mode.
 - Typical cost on a 2x display: topo/aurora ~2% CPU (GPU shader), hands ~5–8%, glyphs ~8–10%.
+
+## Window wheel
+
+Hold **⌃⌥W** anywhere and a radial menu opens around the cursor, like a game weapon wheel. Move the
+mouse toward a wedge and let go: the front window snaps there. The eight wedges sit where the window
+ends up: top = fill the screen, left/right = halves, the diagonals = quarters, bottom = bottom half.
+The hub is "Center" (70 % of the screen, centered). Tap ⌃⌥W instead of holding it and the wheel stays
+open so you can click a wedge; Esc, a right-click or a click outside closes it. The **Window** submenu
+in the menu bar has the same layouts as plain items plus Next Display, Minimize and Restore Size (undo
+the last snap), and `./ltw window left` etc. does it from the shell; `./ltw wheel` opens the wheel.
+
+Moving other apps' windows needs the **Accessibility** permission: the first use opens System
+Settings → Privacy & Security → Accessibility, where you switch on Ltw Wallpaper. Like the audio
+permission, macOS forgets it after every rebuild until you run `tools/make-signing-cert.sh` once.
+Customize → App → **Window wheel** sets the size, how much the screen dims behind it, and a gap to keep
+between tiled windows; the wheel uses the Customize accent color.
 
 ## Menu bar tint
 
