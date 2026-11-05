@@ -66,17 +66,24 @@ function build() {
   // grass silhouette drawn once
   grass = null;
   if (CONFIG.grass) {
+    // A meadow edge, not a black bar: the ground is a dark version of the sky's bottom color with a
+    // soft top, and the blades lean in two layers of slightly different darkness.
     grass = document.createElement('canvas'); grass.width = W; grass.height = H;
     const g = grass.getContext('2d');
-    g.fillStyle = '#000';
+    const [br, bg, bb] = [1, 3, 5].map(i => parseInt(CONFIG.bgBottom.slice(i, i + 2), 16) || 0);
+    const dark = (k, a = 1) => `rgba(${Math.round(br * k)},${Math.round(bg * k)},${Math.round(bb * k)},${a})`;
+    const groundY = H * 0.93;
+    const gr = g.createLinearGradient(0, groundY - H * 0.04, 0, H);
+    gr.addColorStop(0, dark(0.55, 0)); gr.addColorStop(0.25, dark(0.45, 0.9)); gr.addColorStop(1, dark(0.12));
+    g.fillStyle = gr; g.fillRect(0, groundY - H * 0.04, W, H);
     for (let layer = 0; layer < 2; layer++) {
-      const baseY = H * (0.9 + layer * 0.06), hgt = H * (0.09 - layer * 0.03);
-      for (let x = -20; x < W + 20; x += 3 * dpr) {
-        const h = hgt * (0.4 + Math.random() * 0.6), lean = (Math.random() - 0.5) * 20 * dpr;
-        g.beginPath(); g.moveTo(x, baseY); g.quadraticCurveTo(x + lean * 0.5, baseY - h * 0.6, x + lean, baseY - h);
-        g.lineWidth = (1 + Math.random()) * dpr; g.strokeStyle = layer ? '#000' : '#02050399'; g.stroke();
+      const baseY = H * (0.905 + layer * 0.04), hgt = H * (0.1 - layer * 0.035);
+      g.strokeStyle = layer ? dark(0.18) : dark(0.3, 0.75);
+      for (let x = -20; x < W + 20; x += 2.5 * dpr) {
+        const h = hgt * (0.35 + Math.random() * 0.65), lean = (Math.random() - 0.5) * 24 * dpr;
+        g.beginPath(); g.moveTo(x, baseY + 2 * dpr); g.quadraticCurveTo(x + lean * 0.5, baseY - h * 0.6, x + lean, baseY - h);
+        g.lineWidth = (0.8 + Math.random() * 1.2) * dpr; g.stroke();
       }
-      g.fillRect(0, baseY, W, H - baseY);
     }
   }
 }

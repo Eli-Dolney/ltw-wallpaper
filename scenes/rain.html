@@ -17,20 +17,28 @@
 const CONFIG = {
   colors: ['#0a1018', '#1b3350', '#d97757', '#ffd27a'],   // night, blue, warm light, bright light
   lights: 0.9,          // how many bokeh city lights behind the glass
-  drops: 1.0,           // droplet density
-  trails: 0.6,          // running streaks
+  drops: 1.0,           // how many drops run down the glass
+  size: 1.0,            // drop size
+  trails: 0.5,          // how much of a wet trail a drop leaves
+  fog: 0.55,            // condensation on the glass (drops and trails wipe it clear)
   blur: 0.7,            // how blurry the world behind the glass is
+  rainfall: 0.6,        // rain streaks falling in the city behind the glass
   speed: 1.0,
   resolution: 0.6, fps: 30,
 };
 const SCHEMA = { groups: [
   { label: 'Colors', fields: [ { key: 'colors', type: 'colors', label: 'Night → lights' } ]},
   { label: 'Glass', fields: [
-    { key: 'drops', type: 'range', label: 'Droplets', min: 0, max: 2, step: 0.05 },
+    { key: 'drops', type: 'range', label: 'Drops', min: 0, max: 2, step: 0.05 },
+    { key: 'size', type: 'range', label: 'Drop size', min: 0.5, max: 2, step: 0.05 },
     { key: 'trails', type: 'range', label: 'Trails', min: 0, max: 1.5, step: 0.05 },
+    { key: 'fog', type: 'range', label: 'Condensation', min: 0, max: 1, step: 0.05 },
+    { key: 'speed', type: 'range', label: 'Speed', min: 0.1, max: 3, step: 0.05 },
+  ]},
+  { label: 'Outside', fields: [
     { key: 'lights', type: 'range', label: 'City lights', min: 0, max: 2, step: 0.05 },
     { key: 'blur', type: 'range', label: 'Background blur', min: 0, max: 1, step: 0.05 },
-    { key: 'speed', type: 'range', label: 'Speed', min: 0.1, max: 3, step: 0.05 },
+    { key: 'rainfall', type: 'range', label: 'Falling rain', min: 0, max: 1.5, step: 0.05 },
   ]},
   { label: 'Performance', fields: [
     { key: 'resolution', type: 'range', label: 'Render scale', min: 0.2, max: 1, step: 0.05 },
@@ -39,85 +47,154 @@ const SCHEMA = { groups: [
 ]};
 LTW.setup(CONFIG, SCHEMA, { change(k) { if (k === 'resolution') G.resize(CONFIG.resolution); else setUniforms(); } });
 // ------------------------------------------
+// Rain on a window at night. Three layers of cells each hold one drop that slides down in a stick-slip
+// motion and leaves a trail of droplets; static drops sit on the glass; condensation fogs the view and
+// every drop or trail wipes it clear, so the city shows sharp and bright through the water. Inside a drop
+// the world is refracted (flipped and magnified through a lens-shaped normal) with a rim and a highlight.
 const FS = `
-uniform float T, LI, DR, TR, BL; uniform vec3 C0, C1, C2, C3;
+uniform float T, LI, DR, SZ, TR, FG, BL, RF; uniform vec3 C0, C1, C2, C3;
 float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+float h1(float p){ return fract(sin(p * 127.1) * 43758.5453); }
+float n2(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
   return mix(mix(h(i), h(i+vec2(1,0)), f.x), mix(h(i+vec2(0,1)), h(i+vec2(1,1)), f.x), f.y); }
-// the city behind the glass: a dark gradient with blurry bokeh lights in rows
+float S(float a, float b, float x){ return smoothstep(a, b, x); }
+
+// The city behind the glass: sky gradient, rows of bokeh lights (warm and cool), a wet street glow
+// at the bottom, and rain streaks falling through the light. blur in 0..1 widens the bokeh discs.
 vec3 world(vec2 uv, float blur) {
-  vec3 col = mix(C0, C1, smoothstep(0.1, 0.9, uv.y) * 0.8 + 0.1 * n(uv * 3.0));
-  col = mix(col, C1 * 0.6, smoothstep(0.55, 0.2, uv.y));
+  vec3 col = mix(C0, C1, S(0.05, 0.95, uv.y) * 0.75 + 0.12 * n2(uv * 2.5 + T * 0.01));
+  col = mix(col, C1 * 0.45, S(0.5, 0.15, uv.y));                       // darker street level
+  col += C2 * 0.06 * S(0.3, 0.0, uv.y);                                 // sodium glow near the ground
   for (int i = 0; i < 3; i++) {
     float fi = float(i);
-    vec2 g = uv * vec2(14.0 + fi * 6.0, 9.0 + fi * 4.0) + fi * 7.3;
+    float depth = 1.0 - fi * 0.28;                                        // far rows are smaller and denser
+    vec2 g = uv * vec2(11.0 + fi * 7.0, 7.0 + fi * 5.0) + fi * 7.3;
     vec2 id = floor(g); float r = h(id + fi);
-    if (r > 1.0 - 0.18 * LI) {
-      vec2 c = fract(g) - 0.5 - (vec2(h(id + 1.1), h(id + 2.2)) - 0.5) * 0.5;
-      float d = length(c);
-      float rad = 0.12 + 0.15 * blur + 0.1 * h(id + 3.3);
-      float glow = smoothstep(rad, rad * (0.3 - 0.25 * blur), d);
+    if (r > 1.0 - 0.2 * LI) {
+      // keep every disc (and its halo) inside its cell so bokeh never shows a square edge
+      vec2 c = fract(g) - 0.5 - (vec2(h(id + 1.1), h(id + 2.2)) - 0.5) * 0.2;
+      float d = length(c * vec2(1.0, 1.4));
+      float rad = min(0.3, (0.07 + 0.08 * h(id + 3.3)) * depth * (1.0 + 1.2 * blur));
+      float disc = S(rad, rad * (0.55 - 0.45 * blur), d);
+      disc += S(min(0.42, rad * 1.8), 0.0, d) * 0.12 * blur;              // soft halo
       vec3 lc = mix(C2, C3, h(id + 4.4));
-      col += lc * glow * (0.5 + 0.5 * h(id + 5.5)) * smoothstep(0.75, 0.3, uv.y) * (0.85 + 0.15 * sin(T * (1.0 + r) + r * 20.0));
+      if (h(id + 6.6) > 0.78) lc = mix(lc, C1 * 2.2, 0.8);               // a few cool white/blue lights
+      float flicker = 0.85 + 0.15 * sin(T * (1.0 + r * 2.0) + r * 20.0);
+      col += lc * disc * (0.45 + 0.55 * h(id + 5.5)) * S(0.8, 0.25, uv.y) * flicker * depth;
     }
+  }
+  // street reflections: vertical smears of the lights' color near the bottom
+  col += C2 * 0.18 * S(0.25, 0.0, uv.y) * (0.5 + 0.5 * n2(vec2(uv.x * 40.0, uv.y * 6.0 - T * 0.2)));
+  // falling rain in the city: fast thin streaks, two depths
+  for (int i = 0; i < 2; i++) {
+    float fi = float(i);
+    vec2 s = uv * vec2(90.0 + fi * 60.0, 2.2 + fi) ;
+    s.y += T * (2.6 + fi * 1.2);
+    s.x += uv.y * 0.15;                                                   // slight slant
+    vec2 sid = floor(s); float sr = h(sid + fi * 3.0);
+    float streak = S(0.07, 0.0, abs(fract(s.x) - 0.5) - 0.01) * S(0.9, 0.25, fract(s.y)) * step(0.8, sr);
+    col += vec3(0.55, 0.65, 0.8) * streak * 0.14 * RF * (0.6 - fi * 0.25);
   }
   return col;
 }
-// One layer of drops. Returns (normal.xy, drop mask, trail mask). Cells are tall; each has a drop
-// that slides down in a stick–slip motion and leaves smaller droplets above it.
-vec4 layer(vec2 uv, float t, float scale, float seed) {
-  vec2 asp = vec2(3.0, 1.0);
+
+// Lens normal and masks for one drop at p (cell units, drop centered at 0) with radius sz.
+// A drop is a disc with a short tail above it (the water it is pulling along).
+vec4 drop(vec2 p, float sz, float tail) {
+  float d = length(p / vec2(1.0, 1.15));
+  float m = S(sz, sz * 0.82, d);
+  float t = tail > 0.0 ? S(sz * 0.65, 0.0, abs(p.x)) * S(sz * (1.0 + tail * 2.2), sz * 0.9, p.y) * step(0.0, p.y) * S(0.0, sz * 0.4, p.y) : 0.0;
+  float mask = max(m, t * 0.9);
+  float z = sqrt(max(0.0, 1.0 - (d / sz) * (d / sz)));                 // sphere height → stronger bend at the rim
+  vec2 nrm = (p / sz) * (1.0 - z * 0.55) * mask;
+  return vec4(nrm, mask, m);
+}
+
+// One layer of sliding drops: (normal.xy, drop mask, trail mask).
+vec4 sliding(vec2 uv, float t, float scale, float seed) {
+  vec2 asp = vec2(1.0, 1.0 / 2.6);                                        // tall cells (2.6× their width): room to slide
   vec2 g = uv * scale * asp;
   vec2 id = floor(g);
-  float r = h(id + seed);
+  float r = h(id + seed), r2 = h(id + seed + 7.0);
   vec2 f = fract(g) - 0.5;
-  // x wobbles slowly, y slides down with a pause (the drop "sticks" then slips)
-  float x = (r - 0.5) * 0.7;
-  float ty = t * (0.6 + r * 0.8) + r * 10.0;
-  float y = 0.5 - fract(ty) ;                            // 0.5 (top) → -0.5 (bottom)
-  y += 0.08 * sin(ty * 6.2831 * 3.0) * (1.0 - r);          // slip wobble
-  x += 0.08 * sin(ty * 6.2831 * 2.0 + r * 5.0);
-  vec2 p = (f - vec2(x, y)) * vec2(1.0, 0.75);           // squash so drops look round on a tall cell
-  float sz = 0.10 + 0.08 * h(id + seed + 2.0);
-  float d = length(p);
-  float mask = smoothstep(sz, sz * 0.85, d);
-  vec2 normal = (p / sz) * mask;
-  // trail: small drops along the path above the drop, fading with distance
-  float trail = 0.0;
-  vec2 tp = f - vec2(x, 0.0);
-  float above = smoothstep(0.0, 0.05, f.y - y);
-  float dots = smoothstep(0.03, 0.0, length(vec2(tp.x, fract((f.y - y) * 8.0) - 0.5) * vec2(1.0, 0.125)) - 0.012);
-  trail = dots * above * smoothstep(0.6, 0.0, f.y - y) * TR;
-  float on = step(1.0 - 0.75 * min(1.0, DR), r);          // not every cell has a drop
-  return vec4(normal, mask, trail) * on;
+  float on = step(1.0 - 0.7 * min(1.4, DR), r);                          // not every cell has a drop
+  // stick–slip: progress is time plus a noisy stair, so the drop pauses then lurches
+  float tt = t * (0.5 + r * 0.9) + r2 * 10.0;
+  float stair = floor(tt) + S(0.0, 0.6, fract(tt)) ;
+  float y = 0.5 - fract(stair * 0.37 + r2) ;                              // top → bottom, wraps
+  y *= 2.6;                                                                // cell is 2.6 tall in these units
+  float x = (r - 0.5) * 0.4 + 0.05 * sin(stair * 3.0 + r * 9.0);          // wobble sideways while slipping (stays inside the cell)
+  vec2 p = (f * vec2(1.0, 2.6)) - vec2(x, y);
+  float sz = (0.07 + 0.07 * r2) * SZ;
+  float moving = S(0.0, 0.25, fract(tt)) * S(0.8, 0.55, fract(tt));
+  vec4 d = drop(p, sz, 0.15 + moving * 0.45);
+  // trail: droplets left along the path above the drop, thinning out with distance
+  float above = max(0.0, p.y);
+  // only cells whose drop is fairly big leave a visible trail, and it thins out quickly
+  float along = S(0.0, 0.08, above) * S(0.9, 0.0, above) * S(0.08, 0.12, sz);
+  float wig = 0.02 * sin(above * 23.0 + r * 40.0);                            // the path wanders a little
+  float beads = S(0.028, 0.0, abs(p.x - wig) - 0.01) * S(0.5, 0.0, abs(fract(above * (7.0 + 5.0 * r2) + r * 3.0) - 0.5) - 0.2);
+  float trail = along * (0.15 + 0.85 * beads) * S(sz * 0.6, 0.0, abs(p.x)) * TR;
+  return vec4(d.xy, d.z, trail) * on;
 }
+
+// Static drops that sit on the glass, each fading in and out over a few seconds.
+vec4 sitting(vec2 uv, float t, float scale, float seed) {
+  vec2 g = uv * scale;
+  vec2 id = floor(g);
+  float r = h(id + seed), r2 = h(id + seed + 3.0);
+  vec2 f = fract(g) - 0.5 + (vec2(r, r2) - 0.5) * 0.4;
+  float life = fract(t * 0.05 * (0.5 + r2) + r * 7.0);
+  float vis = S(0.0, 0.15, life) * S(1.0, 0.7, life);
+  if (vis < 0.03 || r < 1.0 - 0.4 * min(1.4, DR)) return vec4(0.0);
+  float sz = (0.05 + 0.09 * r2) * SZ * vis;
+  return drop(f, sz, 0.0);
+}
+
 void main(){
   vec2 uv = gl_FragCoord.xy / R;
-  float t = T * 0.35;
-  vec4 a = layer(uv, t, 4.0, 0.0);
-  vec4 b = layer(uv + 0.37, t * 1.2, 7.0, 10.0);
-  vec4 c = layer(uv + 0.61, t * 0.8, 11.0, 20.0);
-  vec2 nrm = a.xy + b.xy * 0.8 + c.xy * 0.6;
-  float mask = max(a.z, max(b.z, c.z));
+  vec2 asp = vec2(R.x / R.y, 1.0);
+  vec2 q = uv * asp;                                                       // square cells regardless of aspect
+  float t = T * 0.6;
+  vec4 a = sliding(q, t, 4.0, 0.0);
+  vec4 b = sliding(q + 0.37, t * 1.25, 6.5, 10.0);
+  vec4 c = sliding(q + 0.61, t * 0.85, 10.0, 20.0);
+  vec4 s1 = sitting(q, T, 9.0, 30.0);
+  vec4 s2 = sitting(q + 0.29, T, 16.0, 40.0);
+  vec2 nrm = a.xy + b.xy * 0.75 + c.xy * 0.55 + s1.xy * 0.6 + s2.xy * 0.45;
+  float mask = max(max(a.z, b.z), max(c.z, max(s1.z, s2.z)));
   float trail = max(a.w, max(b.w, c.w));
   float wet = max(mask, trail);
-  // refraction: inside a drop the world is sharp, magnified and flipped a little; outside it is blurry
-  vec3 blurred = world(uv, BL);
-  vec3 sharp = world(uv - nrm * 0.12 - vec2(0.0, 0.03 * mask), BL * 0.15);
-  vec3 col = mix(blurred, sharp * 1.15, wet);
-  // shading: darker rim, bright highlight on the upper-left of each drop
-  float rim = smoothstep(0.55, 1.0, length(nrm)) * mask;
-  col *= 1.0 - rim * 0.35;
-  float hi = smoothstep(0.35, 0.0, length(nrm - vec2(-0.45, 0.45))) * mask;
-  col += vec3(0.9, 0.95, 1.0) * hi * 0.35;
-  col *= 0.9 + 0.2 * (1.0 - length(uv - 0.5));
-  col += (h(gl_FragCoord.xy + fract(T)) - 0.5) * 0.015;
+  // condensation: fog over the whole glass, wiped where water is (and slowly regrowing after)
+  float fog = FG * (0.85 + 0.15 * n2(q * 3.0 + T * 0.02)) * (1.0 - S(0.0, 0.6, trail) * 0.85) * (1.0 - mask);
+  // the world: blurry and washed out through the fog, sharp and bright through water
+  float blurAmt = clamp(BL + fog * 0.6, 0.0, 1.0);
+  vec3 blurred = world(uv, blurAmt);
+  blurred = mix(blurred, vec3(dot(blurred, vec3(0.333))) * 0.9 + C1 * 0.25, fog * 0.5);       // fog lifts the blacks and dulls color
+  vec3 sharp = world(uv - nrm * 0.045 * (1.0 + mask) - vec2(0.0, 0.018 * mask), BL * 0.12);   // flipped/magnified through the lens
+  vec3 col = mix(blurred, sharp * 1.5 + C1 * 0.04, S(0.0, 0.35, max(mask, trail * 0.6)));
+  // drop shading: dark lower-right rim, bright upper-left highlight, a thin specular dot
+  float nl = length(nrm);
+  float rim = S(0.4, 1.0, nl) * mask;
+  col *= 1.0 - rim * 0.6;
+  float hi = S(0.4, 0.0, length(nrm - vec2(-0.5, 0.45))) * mask;
+  col += vec3(0.9, 0.95, 1.0) * hi * 0.3;
+  // a drop is a lens: its lower half gathers the light from above and glows, its top goes dark
+  col += (C3 * 0.5 + 0.5) * S(0.15, 0.85, -nrm.y) * S(0.3, 0.9, nl) * mask * 0.28;
+  col *= 1.0 - S(0.2, 0.9, nrm.y) * S(0.3, 0.9, nl) * mask * 0.35;
+  col += vec3(1.0) * S(0.12, 0.0, length(nrm - vec2(-0.62, 0.62))) * mask * 0.5;
+  // trails catch a little light along their edge
+  col += C3 * trail * 0.04;
+  // glass: slight vignette and film grain
+  col *= 0.88 + 0.22 * (1.0 - length(uv - 0.5));
+  col += (h(gl_FragCoord.xy + fract(T)) - 0.5) * 0.02;
   gl_FragColor = vec4(col, 1.0);
 }`;
 const G = GL(document.getElementById('c'), FS);
 function setUniforms() {
   G.colors('C', CONFIG.colors, 4);
-  G.uniform('LI', CONFIG.lights); G.uniform('DR', CONFIG.drops); G.uniform('TR', CONFIG.trails); G.uniform('BL', CONFIG.blur);
+  G.uniform('LI', CONFIG.lights); G.uniform('DR', CONFIG.drops); G.uniform('SZ', CONFIG.size); G.uniform('TR', CONFIG.trails);
+  G.uniform('FG', CONFIG.fog); G.uniform('BL', CONFIG.blur); G.uniform('RF', CONFIG.rainfall);
 }
 setUniforms(); G.resize(CONFIG.resolution); addEventListener('resize', () => G.resize(CONFIG.resolution));
 let t = 0;

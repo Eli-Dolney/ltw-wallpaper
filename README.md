@@ -178,10 +178,13 @@ Included:
 - **aurora** – a slow WebGL noise shader with five editable colors.
 - **nebula** – deep-space clouds and twinkling stars in three parallax layers that follow the mouse.
 - **synthwave** – striped retro sun, neon mountains and a scrolling perspective grid; the sun pumps to the bass. ♪
-- **rain** – rain on a window at night: droplets slide and leave trails over blurry city lights.
+- **rain** – rain on a window at night: drops sit on the glass and slide down in stick-slip lurches,
+  leaving beaded trails that wipe the condensation; the city's bokeh lights refract through each drop
+  (flipped and magnified, dark rim, lit lower edge) while thin rain falls outside. Drops, size, trails,
+  condensation, lights, blur and falling rain are all sliders.
 - **liquid** – slow swirling fluid colors with a sheen; swells with the music. ♪
 - **warp** – hyperspace star streaks; the mouse steers, the bass hits the throttle. ♪
-- **fireflies** – glowing fireflies drifting over a dark meadow; they gather around the mouse.
+- **fireflies** – glowing fireflies drifting over a dark meadow edge; they gather around the mouse.
 - **terrain** – a neon wireframe landscape you fly over; the mouse tilts the camera.
 - **visualizer** – a system-audio spectrum as bars, a ring or a wave, with afterglow and beat flashes. ♪
 - **topo** – topographic contour lines, computed on the GPU.
@@ -210,9 +213,14 @@ what the Customize window shows.
 (points left), transparent PNGs. To make your own from any clip with a black background:
 
 ```bash
-tools/cut-hands.sh "/path/to/clip.mp4" 0.3      # frame time in seconds; needs ffmpeg
+tools/cut-hands.sh "/path/to/clip.mp4" 1.2 0.04 2500   # frame time, tolerance, min_area; needs ffmpeg
 ./ltw reload
 ```
+
+Pick a frame where the hands are far apart. The script splits the frame where the gap between the
+hands actually is (the widest empty column run of the matte), not at the center line, so a fingertip
+that crosses the middle is never cut off; a low tolerance keeps a fingertip that sits in shadow, and a
+large `min_area` throws away the clip's own floating particles.
 
 Extra arguments: `tolerance` (brightness below which a pixel can be background, default 0.05),
 `min_area` (opaque specks smaller than this many pixels are dropped, default 400) and `edge` (pixels of
